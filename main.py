@@ -3,8 +3,9 @@ import sys
 import os
 
 pygame.init()
-screen = pygame.display.set_mode((900, 900))
+screen = pygame.display.set_mode((900, 900), pygame.NOFRAME)
 screen.fill((255, 255, 255))
+
 
 def load_image(name, colorkey=None):
     fullname = os.path.join('data', name)
@@ -37,10 +38,16 @@ door2_image = load_image('door2.png')
 shop_image = load_image('shop.png', -1)
 
 
-def draw_lvl(obj, x, y, screen2):
-    x *= 70
-    y *= 70
-    img = 0
+def load_level(filename):
+    filename = "data/" + filename
+    with open(filename, 'r') as mapFile:
+        level_map = [line.strip() for line in mapFile]
+    max_width = max(map(len, level_map))
+    return list(map(lambda x: x.ljust(max_width, '.'), level_map))
+
+
+def draw_img(obj, x, y):
+    img: pygame.Surface
     if obj == 'player_sword':
         img = pygame.transform.scale(player_sword_image, (70, 70))
     elif obj == 'player_kope':
@@ -57,34 +64,35 @@ def draw_lvl(obj, x, y, screen2):
         img = pygame.transform.scale(door2_image, (70, 70))
     elif obj == 'shop':
         img = pygame.transform.scale(shop_image, (70, 70))
-    screen2.blit(img, (x + 2, y + 12))
+    screen.blit(img, (x * 70, y * 70))
 
 
-def generate_level(level, screen2):
+def draw_level(level):
     for y in range(len(level)):
         for x in range(len(level[y])):
             if level[y][x] == '0':
-                draw_lvl('floor', x, y, screen2)
+                draw_img('floor', x, y)
             elif level[y][x] == '1':
-                draw_lvl('wall', x, y, screen2)
+                draw_img('wall', x, y)
             elif level[y][x] == 'S':
-                draw_lvl('floor', x, y, screen2)
-                draw_lvl('player_sword', x, y, screen2)
+                draw_img('floor', x, y)
+                draw_img('player_sword', x, y)
             elif level[y][x] == 'K':
-                draw_lvl('floor', x, y, screen2)
-                draw_lvl('player_kope', x, y, screen2)
+                draw_img('floor', x, y)
+                draw_img('player_kope', x, y)
             elif level[y][x] == 'A':
-                draw_lvl('floor', x, y, screen2)
-                draw_lvl('player_axe', x, y, screen2)
+                draw_img('floor', x, y)
+                draw_img('player_axe', x, y)
             elif level[y][x] == '2':
-                draw_lvl('door', x, y, screen2)
+                draw_img('door', x, y)
             elif level[y][x] == '3':
-                draw_lvl('door2', x, y, screen2)
+                draw_img('door2', x, y)
             elif level[y][x] == 'H':
-                draw_lvl('floor', x, y, screen2)
-                draw_lvl('shop', x, y, screen2)
+                draw_img('floor', x, y)
+                draw_img('shop', x, y)
 
-def start_screen():
+
+def show_start_screen():
     intro_text = ["           Dungeon Knight",
                   "",
                   "",
@@ -113,53 +121,61 @@ def start_screen():
                 return
         pygame.display.flip()
 
-width, height = 845, 780
-pygame.init()
-screen = pygame.display.set_mode((width, height))
-screen.fill((255, 255, 255))
-screen2 = pygame.display.set_mode((width, height))
+
+width, height = 840, 770
+screen2 = pygame.display.set_mode((width, height), pygame.NOFRAME)
 screen2.fill((255, 255, 255))
 running = True
 FPS = 50
-start_screen()
+show_start_screen()
+level = load_level('map.txt')
 
 
-def load_level(filename):
-    filename = "data/" + filename
-    with open(filename, 'r') as mapFile:
-        level_map = [line.strip() for line in mapFile]
-
-    max_width = max(map(len, level_map))
-
-    return list(map(lambda x: x.ljust(max_width, '.'), level_map))
+def get_coords(level, elem: str):
+    for y, s in enumerate(level):
+        for x, e in enumerate(s):
+            if level[y][x] == elem:
+                return x, y
 
 
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT:
-                pass
+                x, y = get_coords(level, 'S')
+                if level[y][x - 1] == '0':
+                    s = list(level[y])
+                    s[x - 1], s[x] = 'S', '0'
+                    level[y] = ''.join(s)
             if event.key == pygame.K_RIGHT:
-                pass
+                x, y = get_coords(level, 'S')
+                if level[y][x + 1] == '0':
+                    s = list(level[y])
+                    s[x + 1] = 'S'
+                    s[x] = '0'
+                    level[y] = ''.join(s)
             if event.key == pygame.K_UP:
-                pass
+                x, y = get_coords(level, 'S')
+                if level[y - 1][x] == '0':
+                    level[y] = list(level[y])
+                    level[y - 1] = list(level[y - 1])
+                    level[y - 1][x] = 'S'
+                    level[y][x] = '0'
+                    level[y] = ''.join(level[y])
+                    level[y - 1] = ''.join(level[y - 1])
             if event.key == pygame.K_DOWN:
-                pass
+                x, y = get_coords(level, 'S')
+                if level[y + 1][x] == '0':
+                    level[y] = list(level[y])
+                    level[y + 1] = list(level[y + 1])
+                    level[y + 1][x] = 'S'
+                    level[y][x] = '0'
+                    level[y] = ''.join(level[y])
+                    level[y + 1] = ''.join(level[y + 1])
 
-        if event.type == pygame.KEYUP:
-            if event.key == pygame.K_LEFT:
-                pass
-            if event.key == pygame.K_RIGHT:
-                pass
-            if event.key == pygame.K_UP:
-                pass
-            if event.key == pygame.K_DOWN:
-                pass
-
-    screen.fill('black')
-    generate_level(load_level('map.txt'), screen2)
+    screen2.fill('black')
+    draw_level(level)
     screen.blit(screen2, (0, 0))
     pygame.display.flip()
