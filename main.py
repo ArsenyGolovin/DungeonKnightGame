@@ -1,11 +1,11 @@
-import os
-import sys
-
 import pygame
+import sys
+import os
 
+width, height = 840, 770
 pygame.init()
-screen = pygame.display.set_mode((900, 900), pygame.NOFRAME)
-screen.fill((255, 255, 255))
+screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
+screen.fill('black')
 
 
 def load_image(name, colorkey=None):
@@ -31,11 +31,12 @@ def terminate():
 
 class Player:
     CHAR = 'P'
+    sight = 'left'
 
 
 class PlayerSword(Player):
-    IMAGE = load_image('sword.png', -1)
     CHAR = 'S'
+    image = pygame.transform.scale(load_image('sword.png', -1), (70, 70))
 
     def __init__(self):
         self.hp = 100
@@ -45,8 +46,8 @@ class PlayerSword(Player):
 
 
 class PlayerAxe(Player):
-    IMAGE = load_image('axe.png', -1)
     CHAR = 'A'
+    image = pygame.transform.scale(load_image('axe.png', -1), (70, 70))
 
     def __init__(self):
         self.hp = 120
@@ -56,7 +57,7 @@ class PlayerAxe(Player):
 
 
 class PlayerKope(Player):
-    IMAGE = load_image('kope.png', -1)
+    image = pygame.transform.scale(load_image('kope.png', -1), (70, 70))
     CHAR = 'K'
 
     def __init__(self):
@@ -66,23 +67,45 @@ class PlayerKope(Player):
         self.attack_speed_per_second = 1.5
 
 
+class Shop:
+    IMAGE = load_image('shop.png', -1)
+    CHAR = 'H'
+
+    def __init__(self):
+        self.running = True
+        self.coins = 0
+
+    def draw(self, screen):
+        screen.fill('yellow')
+        self.shop_icon(screen)
+        self.axe_icon(screen)
+        pygame.display.flip()
+
+    def shop_icon(self, screen):
+        font = pygame.font.SysFont('serif', 37)
+        text = font.render('SHOP', True, 'black')
+        screen.blit(text, (10, 2, text.get_width(), text.get_height()))
+
+    def axe_icon(self, screen):
+        screen.blit(PlayerAxe.image, (1, 10))
+        font = pygame.font.SysFont('serif', 15)
+        text = font.render(f'Axe(2)   {self.coins}/50 coins', True, 'black')
+        screen.blit(text, (10, 10))
+
+
 class Board:
     wall_image = load_image('box.jpg')
     floor_image = load_image('floor0.jpg')
     door_image = load_image('door.png')
     door2_image = load_image('door2.png')
-    shop_image = load_image('shop.png', -1)
 
     def __init__(self):
+        self.players = {'sword': PlayerSword(), 'kope': PlayerKope(), 'axe': PlayerAxe()}
+        self.current_player = self.players['sword']
         self.current_level = self.load_level('map.txt')
 
     def show_start_screen(self):
-        intro_text = ["           Dungeon Knight",
-                      "",
-                      "",
-                      "",
-                      "",
-                      ""]
+        intro_text = ["           Dungeon Knight"]
         fon = pygame.transform.scale(load_image('fon.jpg'), (width, height))
         screen.blit(fon, (0, 0))
         font = pygame.font.Font('data/ebrima.ttf', 60)
@@ -104,6 +127,7 @@ class Board:
                 elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     running = False
             pygame.display.flip()
+        screen.fill('black')
         self.mainloop()
 
     @staticmethod
@@ -115,37 +139,30 @@ class Board:
         for y in range(len(field)):
             for x in range(len(field[y])):
                 if field[y][x] == '0':
-                    Board.draw_img('floor', x, y)
+                    self.draw_img('floor', x, y)
                 elif field[y][x] == '1':
-                    Board.draw_img('wall', x, y)
+                    self.draw_img('wall', x, y)
                 elif field[y][x] == PlayerSword.CHAR:
-                    Board.draw_img('floor', x, y)
-                    Board.draw_img('player_sword', x, y)
-                elif field[y][x] == 'K':
-                    Board.draw_img('floor', x, y)
-                    Board.draw_img('player_kope', x, y)
-                elif field[y][x] == 'A':
-                    Board.draw_img('floor', x, y)
-                    Board.draw_img('player_axe', x, y)
+                    self.draw_img('floor', x, y)
+                    self.draw_img('sword', x, y)
+                elif field[y][x] == PlayerKope.CHAR:
+                    self.draw_img('floor', x, y)
+                    self.draw_img('kope', x, y)
+                elif field[y][x] == PlayerAxe.CHAR:
+                    self.draw_img('floor', x, y)
+                    self.draw_img('axe', x, y)
                 elif field[y][x] == '2':
-                    Board.draw_img('door', x, y)
+                    self.draw_img('door', x, y)
                 elif field[y][x] == '3':
-                    Board.draw_img('door2', x, y)
-                elif field[y][x] == 'H':
-                    Board.draw_img('floor', x, y)
-                    Board.draw_img('shop', x, y)
+                    self.draw_img('door2', x, y)
+                elif field[y][x] == Shop.CHAR:
+                    self.draw_img('floor', x, y)
+                    self.draw_img('shop', x, y)
 
-    @staticmethod
-    def draw_img(obj, x, y):
+    def draw_img(self, obj, x, y):
         img: pygame.Surface
         size = (70, 70)
-        if obj == 'player_sword':
-            img = pygame.transform.scale(PlayerSword.IMAGE, size)
-        elif obj == 'player_kope':
-            img = pygame.transform.scale(PlayerKope.IMAGE, size)
-        elif obj == 'player_axe':
-            img = pygame.transform.scale(PlayerAxe.IMAGE, size)
-        elif obj == 'wall':
+        if obj == 'wall':
             img = pygame.transform.scale(Board.wall_image, size)
         elif obj == 'floor':
             img = pygame.transform.scale(Board.floor_image, size)
@@ -154,32 +171,41 @@ class Board:
         elif obj == 'door2':
             img = pygame.transform.scale(Board.door2_image, size)
         elif obj == 'shop':
-            img = pygame.transform.scale(Board.shop_image, size)
+            img = pygame.transform.scale(Shop.IMAGE, size)
+        else:
+            img = self.players[obj].image  # Изображения героев
         screen.blit(img, (x * size[0], y * size[1]))
 
     def mainloop(self):
         running = True
-        FPS = 60
-        current_level = self.current_level
-        current_player = PlayerSword()
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
-                        current_level.move_player('left', current_player)
+                        self.current_level.move_player('left', self.current_player)
+                        if self.current_player.sight == 'right':
+                            self.current_player.image = pygame.transform.flip(self.current_player.image, True, False)
+                            self.current_player.sight = 'left'
                     if event.key == pygame.K_RIGHT:
-                        current_level.move_player('right', current_player)
+                        self.current_level.move_player('right', self.current_player)
+                        if self.current_player.sight == 'left':
+                            self.current_player.image = pygame.transform.flip(self.current_player.image, True, False)
+                            self.current_player.sight = 'right'
                     if event.key == pygame.K_UP:
-                        current_level.move_player('up', current_player)
+                        self.current_level.move_player('up', self.current_player)
                     if event.key == pygame.K_DOWN:
-                        current_level.move_player('down', current_player)
+                        self.current_level.move_player('down', self.current_player)
+                    if event.key == pygame.K_e:
+                        self.current_level.action(self.current_player)
 
-            screen2.fill('black')
+            screen.fill('black')
             self.draw_level()
-            screen.blit(screen2, (0, 0))
             pygame.display.flip()
+
+
+shop = Shop()
 
 
 class Level:
@@ -228,9 +254,34 @@ class Level:
                 s[x - 1], s[x] = char, '0'
                 self.field[y] = ''.join(s)
 
+    def action(self, player):
+        char = player.CHAR
+        x, y = self.get_coords(char)
+        # смена героя
+        if self.field[y][x - 1] in map(lambda x: x.CHAR, board.players.values()):
+            self.field[y] = list(self.field[y])
+            self.field[y][x], self.field[y][x - 1] = self.field[y][x - 1], self.field[y][x]
+            self.field[y] = ''.join(self.field[y])
+            if self.field[y][x] == 'A':
+                board.current_player = board.players['axe']
+            elif self.field[y][x] == 'K':
+                board.current_player = board.players['kope']
+            elif self.field[y][x] == 'S':
+                board.current_player = board.players['sword']
+        # магазин
+        elif self.field[y][x - 1] == 'H' or self.field[y - 1][x] == 'H' or self.field[y - 1][x - 1] == 'H' or \
+                self.field[y + 1][x - 1] == 'H' or self.field[y + 1][x] == 'H':
+            shop.running = True
+            while shop.running:
+                screen.fill('yellow')
+                shop.draw(screen)
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        terminate()
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_ESCAPE:
+                            shop.running = False
+
 
 board = Board()
-width, height = 840, 770
-screen2 = pygame.display.set_mode((width, height), pygame.NOFRAME)
-screen2.fill('black')
 board.show_start_screen()
