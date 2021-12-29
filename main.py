@@ -1,6 +1,7 @@
-import pygame
-import sys
 import os
+import sys
+
+import pygame
 
 width, height = 840, 770
 pygame.init()
@@ -31,7 +32,7 @@ def terminate():
 
 class Player:
     CHAR = 'P'
-    sight = 'left'
+    side = -1  # Влево
 
 
 class PlayerSword(Player):
@@ -185,14 +186,14 @@ class Board:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
                         self.current_level.move_player('left', self.current_player)
-                        if self.current_player.sight == 'right':
+                        if self.current_player.side == 1:
                             self.current_player.image = pygame.transform.flip(self.current_player.image, True, False)
-                            self.current_player.sight = 'left'
+                            self.current_player.side = -1
                     if event.key == pygame.K_RIGHT:
                         self.current_level.move_player('right', self.current_player)
-                        if self.current_player.sight == 'left':
+                        if self.current_player.side == -1:
                             self.current_player.image = pygame.transform.flip(self.current_player.image, True, False)
-                            self.current_player.sight = 'right'
+                            self.current_player.side = 1
                     if event.key == pygame.K_UP:
                         self.current_level.move_player('up', self.current_player)
                     if event.key == pygame.K_DOWN:
@@ -254,13 +255,14 @@ class Level:
                 s[x - 1], s[x] = char, '0'
                 self.field[y] = ''.join(s)
 
-    def action(self, player):
+    def action(self, player: Player):
         char = player.CHAR
         x, y = self.get_coords(char)
         # смена героя
-        if self.field[y][x - 1] in map(lambda x: x.CHAR, board.players.values()):
+        side = player.side
+        if self.field[y][x + side] in map(lambda x: x.CHAR, board.players.values()):
             self.field[y] = list(self.field[y])
-            self.field[y][x], self.field[y][x - 1] = self.field[y][x - 1], self.field[y][x]
+            self.field[y][x], self.field[y][x + side] = self.field[y][x + side], self.field[y][x]
             self.field[y] = ''.join(self.field[y])
             if self.field[y][x] == 'A':
                 board.current_player = board.players['axe']
@@ -269,8 +271,7 @@ class Level:
             elif self.field[y][x] == 'S':
                 board.current_player = board.players['sword']
         # магазин
-        elif self.field[y][x - 1] == 'H' or self.field[y - 1][x] == 'H' or self.field[y - 1][x - 1] == 'H' or \
-                self.field[y + 1][x - 1] == 'H' or self.field[y + 1][x] == 'H':
+        elif self.field[y][x + player.side] == 'H':
             shop.running = True
             while shop.running:
                 screen.fill('yellow')
