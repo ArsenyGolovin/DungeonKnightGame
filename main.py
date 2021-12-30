@@ -87,21 +87,20 @@ class Shop:
                       load_image('speed_icon.jpg', -1),
                       load_image('coins.png', -1))
         self.font = pygame.font.SysFont('serif', 25)
-        self.running = True
         self.coins = 100
-        self.txt1, self.txt2 = '', ''
+        self.txt1, self.txt2 = '    50 coins', '    50 coins'
 
     def buy(self, pos, player):
         if pos[0] in range(20, 290):
             for i in range(1, 7):
                 if pos[1] in range(i * 90, 90 + i * 90):
-                    if i == 1 and self.coins >= 50 and self.txt1 != ' BOUGHT':
-                        self.txt1 = ' BOUGHT'
-                        PlayerAxe.status = 'unlock'
-                        self.coins -= 50
-                    elif i == 2 and self.coins >= 50 and self.txt2 != ' BOUGHT':
+                    if i == 1 and self.coins >= 50 and self.txt2 != ' BOUGHT':
                         self.txt2 = ' BOUGHT'
-                        PlayerKope.status = 'unlock'
+                        board.players['axe'].status = 'unlock'
+                        self.coins -= 50
+                    elif i == 2 and self.coins >= 50 and self.txt1 != ' BOUGHT':
+                        self.txt1 = ' BOUGHT'
+                        board.players['kope'].status = 'unlock'
                         self.coins -= 50
                     elif i == 3 and self.coins >= 10:
                         player.hp += 1
@@ -154,9 +153,11 @@ class Shop:
                                          f'ARMOR  {player.armor}',
                                          f'ATTACK SPEED  {player.attack_speed_per_second}',
                                          f'COINS  {self.coins}')
-        for i in range(1, 3):
-            self.draw_icon(screen, Player.__subclasses__()[i].BIG_IMAGE, player_img_size,
-                           (30, 100 + (i - 1) * 90), '         50 coins', (110, 120 + (i - 1) * 90))
+        self.draw_icon(screen, PlayerAxe.BIG_IMAGE, player_img_size,
+                       (30, 100), self.txt1, (110, 210))
+        self.draw_icon(screen, PlayerKope.BIG_IMAGE, player_img_size,
+                       (30, 190), self.txt2, (110, 120))
+
         for i in range(len(self.additions_num)):
             self.draw_icon(screen, self.icons[i], icon_size, (30, 285 + i * 90),
                            f'+ {str(self.additions_num[i]).ljust(5)} 10 coins', (110, 300 + i * 90))
@@ -356,24 +357,27 @@ class Level:
 
     @staticmethod
     def open_shop(player: Player):
-        shop.running = True
-        shop.draw(screen, player)
-        while shop.running:
+        running = True
+        while running:
+            screen.fill('black')
+            shop.draw(screen, player)
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+                event_type = event.type
+                if event_type == pygame.QUIT:
                     terminate()
-                if event.type == pygame.KEYDOWN:
+                if event_type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        shop.running = False
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    pos1 = event.pos
-                    shop.buy(pos1, board.current_player)
-                    shop.draw(screen, board.current_player)
-                    pygame.display.flip()
-                if event.type == pygame.MOUSEMOTION:
-                    pos1 = event.pos
-                    shop.highlight(screen, pos1)
+                        running = False
+                if event_type == pygame.MOUSEBUTTONDOWN:
+                    pos = event.pos
+                    shop.buy(pos, board.current_player)
+                    screen.fill('black')
+                    shop.draw(screen, player)
+                if event_type == pygame.MOUSEMOTION:
+                    pos = event.pos
+                    shop.highlight(screen, pos)
                     shop.draw_content(player)
+
                 pygame.display.flip()
 
 
