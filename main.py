@@ -20,9 +20,6 @@ cur = con.cursor()
 
 def load_image(name, colorkey=None):
     fullname = os.path.join('data', name)
-    if not os.path.isfile(fullname):
-        print(f"Файл с изображением '{fullname}' не найден")
-        terminate()
     image = pygame.image.load(fullname)
     if colorkey is not None:
         image = image.convert()
@@ -72,16 +69,22 @@ class AnimatedSprite(pygame.sprite.Sprite):
 class Player:
     BIG_IMAGE: pygame.Surface
     unlocked = False
-    side = -1  # Влево
+    side = 1  # Вправо
+
+    def update(self):
+        self.current_image = transform.flip(self.current_image, True, False)
+        self.side = -self.side
 
 
 class PlayerSword(Player):
-    BIG_IMAGE = load_image('sword.png', -1)
+    BIG_IMAGE = load_image('sword/sword-0.png')
     CHAR = 'S'
     NAME = 'sword'
     unlocked = True
 
     def __init__(self):
+        self.frames = [transform.scale(load_image(f'sword/sword-{i}.png'), (70, 70)) for i in range(3)]
+        self.current_image = self.frames[0]
         self.image = transform.scale(PlayerSword.BIG_IMAGE, (70, 70))
         self.hp = 100
         self.dmg = 20
@@ -90,25 +93,35 @@ class PlayerSword(Player):
 
 
 class PlayerAxe(Player):
-    BIG_IMAGE = load_image('axe.png', -1)
+    BIG_IMAGE = load_image('axe/axe-0.png')
     CHAR = 'A'
     NAME = 'axe'
 
     def __init__(self):
-        self.image = transform.scale(PlayerAxe.BIG_IMAGE, (70, 70))
+        self.frames = [transform.scale(load_image(f'axe/axe-{i}.png'), (70, 70)) for i in range(4)]
+        self.current_image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
         self.hp = 120
         self.dmg = 40
         self.armor = 25
         self.attack_speed_per_second = 2.0
 
+    def attack(self):
+        clock = pygame.time.Clock()
+        for i in range(1, len(self.frames)):
+            self.current_image = self.frames[i] if self.side == 1 else transform.flip(self.frames[i], True, False)
+            pygame.display.flip()
+            clock.tick(2000)
+        self.current_image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
+
 
 class PlayerKope(Player):
-    BIG_IMAGE = load_image('kope.png', -1)
+    BIG_IMAGE = load_image('kope/kope-0.png')
     CHAR = 'K'
     NAME = 'kope'
 
     def __init__(self):
-        self.image = transform.scale(PlayerKope.BIG_IMAGE, (70, 70))
+        self.frames = [transform.scale(load_image(f'kope/kope-{i}.png'), (70, 70)) for i in range(3)]
+        self.current_image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
         self.hp = 90
         self.dmg = 50
         self.armor = 10
@@ -224,7 +237,7 @@ class Board:
     def __init__(self):
         self.current_level = self.load_level('map.txt')
         self.players = {'sword': PlayerSword(), 'kope': PlayerKope(), 'axe': PlayerAxe()}
-        self.current_player = self.players['sword']
+        self.current_player = self.players['axe']
 
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
@@ -276,7 +289,7 @@ class Board:
                 elif char == PlayerSword.CHAR:
                     self.draw_image('floor', x, y)
                     self.draw_image('sword', x, y)
-                elif char == 'K':
+                elif char == PlayerKope.CHAR:
                     self.draw_image('floor', x, y)
                     self.draw_image('kope', x, y)
                 elif char == PlayerAxe.CHAR:
@@ -293,13 +306,7 @@ class Board:
     def draw_image(self, obj: str, x: int, y: int):
         img: pygame.Surface
         size = (70, 70)
-        if obj == 'player_sword':
-            img = transform.scale(PlayerSword.BIG_IMAGE, size)
-        elif obj == 'player_kope':
-            img = transform.scale(PlayerKope.BIG_IMAGE, size)
-        elif obj == 'player_axe':
-            img = transform.scale(PlayerAxe.BIG_IMAGE, size)
-        elif obj == 'wall':
+        if obj == 'wall':
             img = transform.scale(Board.WALL_IMAGE, size)
         elif obj == 'floor':
             img = transform.scale(Board.FLOOR_IMAGE, size)
@@ -310,7 +317,7 @@ class Board:
         elif obj == 'shop':
             img = transform.scale(Shop.IMAGE, size)
         else:
-            img = transform.scale(self.players[obj].image, size)
+            img = self.players[obj].current_image
         screen.blit(img, (x * size[0], y * size[1]))
 
     def get_player(self, char: str):
@@ -331,19 +338,18 @@ class Board:
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
                         if self.current_player.side == 1:
-                            self.current_player.image = transform.flip(self.current_player.image, True, False)
-                            self.current_player.side = -1
+                            self.current_player.update()
                     if event.key == pygame.K_RIGHT:
                         dir_x += 1
                         if self.current_player.side == -1:
-                            self.current_player.image = transform.flip(self.current_player.image, True, False)
-                            self.current_player.side = 1
+                            self.current_player.update()
                     if event.key == pygame.K_UP:
                         dir_y -= 1
                     if event.key == pygame.K_DOWN:
                         dir_y += 1
                     self.current_level.move_player(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
+                        self.current_player.attack()
                         self.current_level.action(self.current_player)
             self.draw_level()
             pygame.display.flip()
