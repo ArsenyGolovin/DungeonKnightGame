@@ -313,7 +313,7 @@ class Board:
             img = transform.scale(self.players[obj].image, size)
         screen.blit(img, (x * size[0], y * size[1]))
 
-    def get_player(self, char: str) -> Player | None:
+    def get_player(self, char: str):
         for x in self.players.values():
             if x.CHAR == char:
                 return x
