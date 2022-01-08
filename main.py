@@ -66,26 +66,45 @@ class AnimatedSprite(pygame.sprite.Sprite):
         self.image = self.frames[self.cur_frame]
 
 
-class Player:
+class Player(pygame.sprite.Sprite):
     BIG_IMAGE: pygame.Surface
+    CHAR: str
+    NAME: str
     unlocked = False
     side = 1  # Вправо
 
-    def update(self):
-        self.current_image = transform.flip(self.current_image, True, False)
-        self.side = -self.side
+    def __init__(self):
+        super().__init__(all_sprites)
+        self.hp: int
+        self.dmg: int
+        self.armor: int
+        self.attack_speed_per_second: int
+
+        self.frames = [transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
+                       for i in range(len(os.listdir(os.path.join('data', self.NAME))))]
+        self.image = self.frames[0]
+        self.rect = pygame.rect.Rect((0, 0, 70, 70))
+
+    def get_coords(self) -> (int, int):
+        return self.rect.x // Board.CELL_SIZE[0], self.rect.y // Board.CELL_SIZE[1]
+
+    def set_coords(self, x: int, y: int):
+        self.rect.move(x * Board.CELL_SIZE[0], y * Board.CELL_SIZE[1])
+
+    # Двигает персонажа на заданное число клеток
+    def move(self, x: int, y: int):
+        self.rect.move(self.rect.x + x * Board.CELL_SIZE[0],
+                       self.rect[y] + y * Board.CELL_SIZE[1])
 
 
 class PlayerSword(Player):
-    BIG_IMAGE = load_image('sword/sword-0.png')
+    BIG_IMAGE = load_image('sword/0.png')
     CHAR = 'S'
     NAME = 'sword'
     unlocked = True
 
     def __init__(self):
-        self.frames = [transform.scale(load_image(f'sword/sword-{i}.png'), (70, 70)) for i in range(3)]
-        self.current_image = self.frames[0]
-        self.image = transform.scale(PlayerSword.BIG_IMAGE, (70, 70))
+        super().__init__()
         self.hp = 100
         self.dmg = 20
         self.armor = 10
@@ -93,13 +112,12 @@ class PlayerSword(Player):
 
 
 class PlayerAxe(Player):
-    BIG_IMAGE = load_image('axe/axe-0.png')
+    BIG_IMAGE = load_image('axe/0.png')
     CHAR = 'A'
     NAME = 'axe'
 
     def __init__(self):
-        self.frames = [transform.scale(load_image(f'axe/axe-{i}.png'), (70, 70)) for i in range(4)]
-        self.current_image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
+        super().__init__()
         self.hp = 120
         self.dmg = 40
         self.armor = 25
@@ -115,13 +133,12 @@ class PlayerAxe(Player):
 
 
 class PlayerKope(Player):
-    BIG_IMAGE = load_image('kope/kope-0.png')
+    BIG_IMAGE = load_image('kope/0.png')
     CHAR = 'K'
     NAME = 'kope'
 
     def __init__(self):
-        self.frames = [transform.scale(load_image(f'kope/kope-{i}.png'), (70, 70)) for i in range(3)]
-        self.current_image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
+        super().__init__()
         self.hp = 90
         self.dmg = 50
         self.armor = 10
@@ -188,7 +205,7 @@ class Shop:
         self.draw_content(player)
 
     @staticmethod
-    def highlight(screen, mouse_pos):
+    def highlight(screen, mouse_pos: (int, int)):
         if mouse_pos[0] in range(20, 290):
             for i in range(1, 7):
                 if mouse_pos[1] in range(i * 90, 90 + i * 90):
@@ -199,7 +216,7 @@ class Shop:
         else:
             shop.draw(screen, board.current_player)
 
-    def draw_content(self, player):
+    def draw_content(self, player: Player):
         self.kope_status = ' BOUGHT' if board.players['kope'].unlocked else '    50 coins'
         self.axe_status = ' BOUGHT' if board.players['axe'].unlocked else '    50 coins'
 
@@ -227,6 +244,7 @@ class Shop:
 
 
 class Board:
+    CELL_SIZE = (70, 70)
     WALL_IMAGE = load_image('box.jpg')
     FLOOR_IMAGE = load_image('floor0.jpg')
     DOOR1_IMAGE = load_image('door.png')
@@ -237,6 +255,8 @@ class Board:
     def __init__(self):
         self.current_level = self.load_level('map.txt')
         self.players = {'sword': PlayerSword(), 'kope': PlayerKope(), 'axe': PlayerAxe()}
+        self.group = pygame.sprite.Group(*(x for x in self.players.values()))
+        self.group.draw(screen)
         self.current_player = self.players['axe']
 
     def load_db_info(self):
@@ -305,7 +325,7 @@ class Board:
 
     def draw_image(self, obj: str, x: int, y: int):
         img: pygame.Surface
-        size = (70, 70)
+        size = Board.CELL_SIZE
         if obj == 'wall':
             img = transform.scale(Board.WALL_IMAGE, size)
         elif obj == 'floor':
@@ -317,7 +337,8 @@ class Board:
         elif obj == 'shop':
             img = transform.scale(Shop.IMAGE, size)
         else:
-            img = self.players[obj].current_image
+            self.players[obj].set_coords(x, y)
+            return
         screen.blit(img, (x * size[0], y * size[1]))
 
     def get_player(self, char: str):
@@ -373,7 +394,8 @@ class Level:
 
     def move_player(self, dir_x: int, dir_y: int, player: Player):
         char = player.CHAR
-        x, y = self.get_coords(char)
+        x, y = player.get_coords()
+        print(x, y)
         if self.field[y + dir_y][x] == '0':
             s = list(self.field[y])
             s1 = list(self.field[y + dir_y])
@@ -381,10 +403,12 @@ class Level:
             s[x] = '0'
             self.field[y] = ''.join(s)
             self.field[y + dir_y] = ''.join(s1)
+            player.move(0, dir_y)
         if self.field[y][x + dir_x] == '0':
             s = list(self.field[y])
             s[x + dir_x], s[x] = char, '0'
             self.field[y] = ''.join(s)
+            player.move(dir_x, 0)
 
     def action(self, player: Player):
         side = player.side
@@ -395,7 +419,7 @@ class Level:
         elif board.get_player(target):  # Если соседнее поле занял игрок
             self.change_player(player)
 
-    def change_player(self, current_player):
+    def change_player(self, current_player: Player):
         side = current_player.side
         x, y = self.get_coords(current_player.CHAR)
         player2 = board.get_player(self.field[y][x + side])
@@ -427,7 +451,6 @@ class Level:
                     pos = event.pos
                     shop.highlight(screen, pos)
                     shop.draw_content(player)
-
                 pygame.display.flip()
 
 
