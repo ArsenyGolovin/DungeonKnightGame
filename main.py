@@ -39,7 +39,7 @@ def terminate():
         p: Player = board.players[x]
         cur.execute("UPDATE Knights SET hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
                     (p.hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
-        cur.execute("UPDATE Player SET coins=?", (shop.coins,))
+    cur.execute("UPDATE Player SET coins=?, current_player=?", (shop.coins, board.current_player.NAME))
     con.commit()
     pygame.quit()
     sys.exit()
@@ -73,6 +73,7 @@ class Player:
     BIG_IMAGE: pygame.Surface
     unlocked = False
     side = -1  # Влево
+    hp, dmg, armor, attack_speed_per_second, CHAR = 0, 0, 0, 0, 'P'
 
 
 class PlayerSword(Player):
@@ -127,7 +128,9 @@ class Shop:
                       load_image('speed_icon.jpg', -1),
                       load_image('coins.png', -1))
         self.font = pygame.font.SysFont('serif', 25)
-        self.coins = 100
+        coins = cur.execute("SELECT coins from Player")
+        for i in coins:
+            self.coins = i[0]
         self.kope_status, self.axe_status = '  50 coins', '  50 coins'
 
     def buy(self, pos: (int, int), player: Player):
@@ -219,12 +222,31 @@ class Board:
     DOOR1_IMAGE = load_image('door.png')
     DOOR2_IMAGE = load_image('door2.png')
 
-    # knight = AnimatedSprite(load_image("sword_walk.jpg", -1), 6, 1, 50, 50)
-
     def __init__(self):
         self.current_level = self.load_level('map.txt')
         self.players = {'sword': PlayerSword(), 'kope': PlayerKope(), 'axe': PlayerAxe()}
-        self.current_player = self.players['sword']
+        self.knight = AnimatedSprite(load_image("sword_walk.jpg", -1), 6, 1, 50, 50)
+
+        player_db = cur.execute("SELECT current_player from Player")
+        for i in player_db:
+            self.current_player = self.players[i[0]]
+            xa, ya = self.current_level.get_coords('A')
+            xs, ys = self.current_level.get_coords('S')
+            xk, yk = self.current_level.get_coords('K')
+            if i[0] == 'axe':
+                self.current_level.field[ya] = list(self.current_level.field[ya])
+                self.current_level.field[ys] = list(self.current_level.field[ys])
+                self.current_level.field[ya][xa], self.current_level.field[ys][xs] = \
+                    self.current_level.field[ys][xs], self.current_level.field[ya][xa]
+                self.current_level.field[ya] = ''.join(self.current_level.field[ya])
+                self.current_level.field[ys] = ''.join(self.current_level.field[ys])
+            elif i[0] == 'kope':
+                self.current_level.field[yk] = list(self.current_level.field[yk])
+                self.current_level.field[ys] = list(self.current_level.field[ys])
+                self.current_level.field[yk][xk], self.current_level.field[ys][xs] = \
+                    self.current_level.field[ys][xs], self.current_level.field[yk][xk]
+                self.current_level.field[yk] = ''.join(self.current_level.field[yk])
+                self.current_level.field[ys] = ''.join(self.current_level.field[ys])
 
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
@@ -368,6 +390,7 @@ class Level:
     def move_player(self, dir_x: int, dir_y: int, player: Player):
         char = player.CHAR
         x, y = self.get_coords(char)
+
         if self.field[y + dir_y][x] == '0':
             s = list(self.field[y])
             s1 = list(self.field[y + dir_y])
@@ -384,7 +407,9 @@ class Level:
         side = player.side
         x, y = self.get_coords(player.CHAR)
         target = self.field[y][x + side]
-        if target == shop.CHAR:
+        shop_target = [self.field[y + 1][x], self.field[y][x - 1], self.field[y - 1][x],
+                       self.field[y - 1][x - 1], self.field[y + 1][x + 1]]
+        if shop.CHAR in shop_target:
             self.open_shop(player)
         elif board.get_player(target):  # Если соседнее поле занял игрок
             self.change_player(player)
