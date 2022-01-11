@@ -160,17 +160,17 @@ class Shop:
                     con.commit()
 
     @staticmethod
-    def draw_shop_title(screen):
+    def draw_shop_title():
         font = pygame.font.SysFont('serif', 37)
         text = font.render('SHOP', True, (0, 0, 0))
         screen.blit(text, (335, 12))
 
-    def draw_icon(self, screen, img, img_size, img_pos, txt, txt_pos):
+    def draw_icon(self, img, img_size, img_pos, txt, txt_pos):
         screen.blit(transform.scale(img, img_size), img_pos)
         text = self.font.render(txt, True, (0, 0, 0))
         screen.blit(text, txt_pos)
 
-    def draw(self, screen, player):
+    def draw(self, player):
         screen.fill('#FFCC66')
         draw.rect(screen, 'red', (20, 90, 270, 540), 3)
         for i in range(1, 7):
@@ -178,16 +178,16 @@ class Shop:
         self.draw_content(player)
 
     @staticmethod
-    def highlight(screen, mouse_pos):
+    def highlight(mouse_pos):
         if mouse_pos[0] in range(20, 290):
             for i in range(1, 7):
                 if mouse_pos[1] in range(i * 90, 90 + i * 90):
                     draw.rect(screen, 'yellow', (20, i * 90, 270, 90))
                     break
                 else:
-                    shop.draw(screen, board.current_player)
+                    shop.draw(board.current_player)
         else:
-            shop.draw(screen, board.current_player)
+            shop.draw(board.current_player)
 
     def draw_content(self, player):
         self.kope_status = ' BOUGHT' if board.players['kope'].unlocked else '    50 coins'
@@ -200,20 +200,20 @@ class Shop:
                                          f'ARMOR  {player.armor}',
                                          f'ATTACK SPEED  {player.attack_speed_per_second}',
                                          f'COINS  {self.coins}')
-        self.draw_icon(screen, PlayerAxe.BIG_IMAGE, player_img_size,
+        self.draw_icon(PlayerAxe.BIG_IMAGE, player_img_size,
                        (30, 100), self.kope_status, (110, 210))
-        self.draw_icon(screen, PlayerKope.BIG_IMAGE, player_img_size,
+        self.draw_icon(PlayerKope.BIG_IMAGE, player_img_size,
                        (30, 190), self.axe_status, (110, 120))
 
         for i in range(len(self.additions_num)):
-            self.draw_icon(screen, self.icons[i], icon_size, (30, 285 + i * 90),
+            self.draw_icon(self.icons[i], icon_size, (30, 285 + i * 90),
                            f'+ {str(self.additions_num[i]).ljust(5)} 10 coins', (110, 300 + i * 90))
-            self.draw_icon(screen, self.icons[i], icon_size, (430, 285 + i * 90),
+            self.draw_icon(self.icons[i], icon_size, (430, 285 + i * 90),
                            player_specifications_strings[i], (510, 300 + i * 90))
-        self.draw_icon(screen, self.icons[4], icon_size, (430, 665),
+        self.draw_icon(self.icons[4], icon_size, (430, 640),
                        player_specifications_strings[4], (510, 660))
         screen.blit(transform.scale(player.BIG_IMAGE, (200, 200)), (430, 70))
-        self.draw_shop_title(screen)
+        self.draw_shop_title()
 
 
 class Board:
@@ -408,7 +408,7 @@ class Level:
         x, y = self.get_coords(player.CHAR)
         target = self.field[y][x + side]
         shop_target = [self.field[y + 1][x], self.field[y][x - 1], self.field[y - 1][x],
-                       self.field[y - 1][x - 1], self.field[y + 1][x + 1]]
+                       self.field[y + 1][x - 1], self.field[y - 1][x - 1]]
         if shop.CHAR in shop_target:
             self.open_shop(player)
         elif board.get_player(target):  # Если соседнее поле занял игрок
@@ -429,7 +429,7 @@ class Level:
         running = True
         while running:
             screen.fill('black')
-            shop.draw(screen, player)
+            shop.draw(player)
             for event in pygame.event.get():
                 event_type = event.type
                 if event_type == pygame.QUIT:
@@ -441,10 +441,10 @@ class Level:
                     pos = event.pos
                     shop.buy(pos, board.current_player)
                     screen.fill('black')
-                    shop.draw(screen, player)
+                    shop.draw(player)
                 if event_type == pygame.MOUSEMOTION:
                     pos = event.pos
-                    shop.highlight(screen, pos)
+                    shop.highlight(pos)
                     shop.draw_content(player)
 
                 pygame.display.flip()
