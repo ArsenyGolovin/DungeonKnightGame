@@ -43,7 +43,6 @@ class Player(pygame.sprite.Sprite):
     CHAR: str
     NAME: str
     unlocked = False
-    side = 1  # Вправо
 
     def __init__(self):
         super().__init__()
@@ -51,11 +50,18 @@ class Player(pygame.sprite.Sprite):
         self.dmg: int
         self.armor: int
         self.attack_speed_per_second: int
+        self.side_x, self.side_y = 1, 0  # Вправо
         self.last_attack_time = time.time()
-        self.frames = [transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
-                       for i in range(len(os.listdir(os.path.join('data', self.NAME))))]
-        self.image = self.frames[0]
-        self.rect = pygame.rect.Rect((140, 140, 70, 70))
+        frames_num = len(os.listdir(os.path.join('data', self.NAME)))
+        self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
+                                    for i in range(frames_num // 3))
+        self.frames_up = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE)
+                               for i in range(frames_num // 3))
+        self.frames_down = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE)
+                                 for i in range(frames_num // 3))
+        self.current_frames = self.frames_x
+        self.image = self.current_frames[0]
+        self.rect = pygame.rect.Rect((0, 0, 70, 70))
 
     def get_coords(self) -> (int, int):
         return self.rect.x // Board.CELL_SIZE[0], self.rect.y // Board.CELL_SIZE[1]
@@ -63,6 +69,15 @@ class Player(pygame.sprite.Sprite):
     def set_coords(self, x: int, y: int):
         self.rect.x = x * Board.CELL_SIZE[0]
         self.rect.y = y * Board.CELL_SIZE[1]
+
+    def set_side(self, side_x: int, side_y: int):
+        if self.side_x != side_x:
+            self.image = transform.flip(self.image, True, False)
+        elif side_y == 1:
+            self.current_frames = self.frames_up
+        elif self.current_frames == -1:
+            self.current_frames = self.frames_down
+
 
     # Двигает персонажа на заданное число клеток
     def move(self, x: int, y: int):
@@ -73,18 +88,15 @@ class Player(pygame.sprite.Sprite):
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
         clock = pygame.time.Clock()
-        for i in range(len(self.frames)):
-            self.image = self.frames[i] if self.side == 1 else transform.flip(self.frames[i], True, False)
+        for i in range(len(self.current_frames)):
+            self.image = self.current_frames[i] if self.side_x == 1 else transform.flip(self.current_frames[i], True, False)
             screen.fill('black')
             board.draw_level()
             all_sprites.draw(screen)
             pygame.display.flip()
             clock.tick(10)
-        self.image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
+        self.image = self.current_frames[0] if self.side_x == 1 else transform.flip(self.current_frames[0], True, False)
         self.last_attack_time = time.time()
-
-    def flip(self):
-        self.image = pygame.transform.flip(self.image, True, False)
 
 
 class PlayerSword(Player):
@@ -338,13 +350,13 @@ class Board:
                         terminate()
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
-                        if self.current_player.side == 1:
-                            self.current_player.side = -1
+                        if self.current_player.side_x == 1:
+                            self.current_player.side_x = -1
                             self.current_player.flip()
                     if event.key == pygame.K_RIGHT:
                         dir_x += 1
-                        if self.current_player.side == -1:
-                            self.current_player.side = 1
+                        if self.current_player.side_x == -1:
+                            self.current_player.side_x = 1
                             self.current_player.flip()
                     if event.key == pygame.K_UP:
                         dir_y -= 1
@@ -354,7 +366,7 @@ class Board:
                     if event.key == pygame.K_e:
                         player = self.current_player
                         player_coords = player.get_coords()
-                        if self.current_level.get_cell(player_coords[0] + player.side, player_coords[1]) in 'AKSH':
+                        if self.current_level.get_cell(player_coords[0] + player.side_x, player_coords[1]) in 'AKSH':
                             self.current_level.action(self.current_player)
                         else:
                             player.attack()
@@ -401,7 +413,7 @@ class Level:
             player.move(dir_x, 0)
 
     def action(self, player: Player):
-        side = player.side
+        side = player.side_x
         x, y = self.get_coords(player.CHAR)
         target = self.field[y][x + side]
         targets = [self.field[y + 1][x], self.field[y][x - 1], self.field[y - 1][x],
@@ -412,7 +424,7 @@ class Level:
             self.change_player(player)
 
     def change_player(self, current_player: Player):
-        side = current_player.side
+        side = current_player.side_x
         x, y = self.get_coords(current_player.CHAR)
         player2 = board.get_player(self.field[y][x + side])
         if player2.unlocked:
