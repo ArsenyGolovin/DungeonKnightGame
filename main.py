@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import sys
-
+import time
 import pygame
 from pygame import draw, transform
 
@@ -51,7 +51,7 @@ class Player(pygame.sprite.Sprite):
         self.dmg: int
         self.armor: int
         self.attack_speed_per_second: int
-
+        self.last_attack_time = time.time()
         self.frames = [transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
                        for i in range(len(os.listdir(os.path.join('data', self.NAME))))]
         self.image = self.frames[0]
@@ -69,12 +69,19 @@ class Player(pygame.sprite.Sprite):
         self.rect.move_ip(x * Board.CELL_SIZE[0], y * Board.CELL_SIZE[1])
 
     def attack(self):
+        # Ограничивает скорость атаки игрока
+        if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
+            return
         clock = pygame.time.Clock()
-        for frame in self.frames:
-            self.image = frame if self.side == 1 else transform.flip(frame, True, False)
+        for i in range(len(self.frames)):
+            self.image = self.frames[i] if self.side == 1 else transform.flip(self.frames[i], True, False)
+            screen.fill('black')
+            board.draw_level()
+            all_sprites.draw(screen)
             pygame.display.flip()
-            clock.tick(2000)
+            clock.tick(10)
         self.image = self.frames[0] if self.side == 1 else transform.flip(self.frames[0], True, False)
+        self.last_attack_time = time.time()
 
     def flip(self):
         self.image = pygame.transform.flip(self.image, True, False)
