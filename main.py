@@ -237,7 +237,7 @@ class Board:
     def __init__(self):
         self.current_level = self.load_level('map.txt')
         self.players = {'sword': sword, 'axe': axe, 'kope': kope}
-        self.current_player = self.players['axe']
+        self.current_player = self.players['sword']
 
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
