@@ -383,7 +383,7 @@ class Level:
         with open('data/' + name) as mapFile:
             level_map = [line.strip() for line in mapFile]
         max_width = max(map(len, level_map))
-        self.field = list(map(lambda x: x.ljust(max_width, '.'), level_map))
+        self.field = list(map(lambda x: list(x.ljust(max_width, '.')), level_map))
 
     def get_field(self):
         return self.field
@@ -402,19 +402,14 @@ class Level:
         x, y = player.get_coords()
         if dir_y:
             if self.field[y + dir_y][x] == '0':
-                s = list(self.field[y])
-                s1 = list(self.field[y + dir_y])
-                s[x], s1[x] = '0', char
-                self.field[y] = ''.join(s)
-                self.field[y + dir_y] = ''.join(s1)
+                self.field[y][x], self.field[y + dir_y][x] = '0', char
                 player.move(0, dir_y)
             else:
                 player.set_side(1, dir_y)
         elif dir_x:
             if self.field[y][x + dir_x] == '0':
-                s = list(self.field[y])
+                s = self.field[y]
                 s[x + dir_x], s[x] = char, '0'
-                self.field[y] = ''.join(s)
                 player.move(dir_x, 0)
             else:
                 player.set_side(dir_x, 0)
@@ -435,13 +430,9 @@ class Level:
         x, y = self.get_coords(current_player.CHAR)
         player2 = board.get_player(self.field[y + side_y][x + side_x])
         if player2.unlocked:
-            self.field[y] = list(self.field[y])
-            self.field[y + side_y] = list(self.field[y + side_y])
             self.field[y][x], self.field[y + side_y][x + side_x] = self.field[y + side_y][x + side_x], self.field[y][x]
-            self.field[y] = ''.join(self.field[y])
-            self.field[y + side_y] = ''.join(self.field[y + side_y])
+            current_player.set_side(1, 0)
             board.current_player = player2
-        current_player.set_side(1, 0)
 
     @staticmethod
     def open_shop(player: Player):
