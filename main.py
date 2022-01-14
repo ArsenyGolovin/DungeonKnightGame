@@ -14,6 +14,13 @@ con = sqlite3.connect("data/dungeon_knight.db")
 cur = con.cursor()
 
 
+def update_screen():
+    screen.fill('black')
+    board.draw_level()
+    all_sprites.draw(screen)
+    pygame.display.flip()
+
+
 def load_image(name, colorkey=None):
     fullname = os.path.join('data', name)
     image = pygame.image.load(fullname)
@@ -54,11 +61,14 @@ class Player(pygame.sprite.Sprite):
         self.last_attack_time = time.time()
         frames_num = len(os.listdir(os.path.join('data', self.NAME)))
         self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
-                                    for i in range(frames_num // 3))
-        self.frames_up = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE)
-                               for i in range(frames_num // 3))
-        self.frames_down = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE)
-                                 for i in range(frames_num // 3))
+                              for i in range(frames_num // 3))
+        # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
+        # Название изображения начинается с "1" или "-1"
+        frames_y = [[], []]
+        for i in range(frames_num // 3):
+            frames_y[0].append(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE))
+            frames_y[1].append(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE))
+        self.frames_y = tuple(tuple(x) for x in frames_y)
         self.current_frames = self.frames_x
         self.image = self.current_frames[0]
         self.rect = pygame.rect.Rect((0, 0, 70, 70))
@@ -70,32 +80,56 @@ class Player(pygame.sprite.Sprite):
         self.rect.x = x * Board.CELL_SIZE[0]
         self.rect.y = y * Board.CELL_SIZE[1]
 
-    def set_side(self, side_x: int, side_y: int):
-        if self.side_x != side_x:
-            self.image = transform.flip(self.image, True, False)
-        elif side_y == 1:
-            self.current_frames = self.frames_up
-        elif self.current_frames == -1:
-            self.current_frames = self.frames_down
+    def set_side(self, side_x, side_y):
+        if side_y:
+            self.side_x = 1
+            self.current_frames = self.frames_y[0 if side_y == 1 else 1]
+            self.image = self.current_frames[0]
+        elif side_x:
+            self.side_x = side_x
+            self.current_frames = self.frames_x
+            self.image = self.current_frames[0] if self.side_x == 1 else transform.flip(
+                self.current_frames[0], True, False)
+        self.side_y = side_y
+        update_screen()
 
-
-    # Двигает персонажа на заданное число клеток
+    # Двигает персонажа на заданное число клеток, при необходимости меняя изображение
     def move(self, x: int, y: int):
         self.rect.move_ip(x * Board.CELL_SIZE[0], y * Board.CELL_SIZE[1])
+        if y == 0:
+            self.current_frames = self.frames_x
+            if self.side_x == 1:
+                self.side_y = 0
+                if x == -1:
+                    self.image = transform.flip(self.current_frames[0], True, False)
+                    self.side_x = -1
+                else:
+                    self.image = self.current_frames[0]
+            elif x == 1:
+                self.image = self.current_frames[0]
+                self.side_x = 1
+        else:
+            self.current_frames = self.frames_y[0] if y == 1 else self.frames_y[1]
+            self.image = self.current_frames[0]
+            self.side_y = y
+            self.side_x = 1
+        update_screen()
 
     def attack(self):
         # Ограничивает скорость атаки игрока
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
         clock = pygame.time.Clock()
-        for i in range(len(self.current_frames)):
-            self.image = self.current_frames[i] if self.side_x == 1 else transform.flip(self.current_frames[i], True, False)
-            screen.fill('black')
-            board.draw_level()
-            all_sprites.draw(screen)
-            pygame.display.flip()
+        for i in range(len(self.frames_x)):
+            if self.side_y == 0:
+                self.image = self.current_frames[i] if self.side_x == 1 else transform.flip(
+                    self.current_frames[i], True, False)
+            else:
+                self.image = self.current_frames[i]
+            update_screen()
             clock.tick(10)
-        self.image = self.current_frames[0] if self.side_x == 1 else transform.flip(self.current_frames[0], True, False)
+        self.image = (self.current_frames[0] if self.side_x == 1 else transform.flip(
+            self.current_frames[0], True, False)) if self.side_y == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
 
 
@@ -151,9 +185,7 @@ class Shop:
                       load_image('speed_icon.jpg', -1),
                       load_image('coins.png', -1))
         self.font = pygame.font.SysFont('serif', 25)
-        coins = cur.execute("SELECT coins from Player")
-        for i in coins:
-            self.coins = i[0]
+        self.coins = cur.execute("SELECT coins from Player").fetchone()[0]
         self.kope_status, self.axe_status = '  50 coins', '  50 coins'
 
     def buy(self, pos: (int, int), player: Player):
@@ -193,7 +225,7 @@ class Shop:
         text = self.font.render(txt, True, (0, 0, 0))
         screen.blit(text, txt_pos)
 
-    def draw(self, player):
+    def draw(self, player: Player):
         screen.fill('#FFCC66')
         draw.rect(screen, 'red', (20, 90, 270, 540), 3)
         for i in range(1, 7):
@@ -249,7 +281,7 @@ class Board:
     def __init__(self):
         self.current_level = self.load_level('map.txt')
         self.players = {'sword': sword, 'axe': axe, 'kope': kope}
-        self.current_player = self.players['sword']
+        self.current_player: Player = self.players['sword']
 
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
@@ -350,30 +382,16 @@ class Board:
                         terminate()
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
-                        if self.current_player.side_x == 1:
-                            self.current_player.side_x = -1
-                            self.current_player.flip()
                     if event.key == pygame.K_RIGHT:
                         dir_x += 1
-                        if self.current_player.side_x == -1:
-                            self.current_player.side_x = 1
-                            self.current_player.flip()
                     if event.key == pygame.K_UP:
                         dir_y -= 1
                     if event.key == pygame.K_DOWN:
                         dir_y += 1
                     self.current_level.move_player(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
-                        player = self.current_player
-                        player_coords = player.get_coords()
-                        if self.current_level.get_cell(player_coords[0] + player.side_x, player_coords[1]) in 'AKSH':
-                            self.current_level.action(self.current_player)
-                        else:
-                            player.attack()
-            self.draw_level()
-            all_sprites.update()
-            all_sprites.draw(screen)
-            pygame.display.flip()
+                        self.current_level.action(self.current_player)
+            update_screen()
 
 
 class Level:
@@ -398,30 +416,35 @@ class Level:
     def move_player(self, dir_x: int, dir_y: int, player: Player):
         char = player.CHAR
         x, y = player.get_coords()
-        if self.field[y + dir_y][x] == '0':
-            s = list(self.field[y])
-            s1 = list(self.field[y + dir_y])
-            s1[x] = char
-            s[x] = '0'
-            self.field[y] = ''.join(s)
-            self.field[y + dir_y] = ''.join(s1)
-            player.move(0, dir_y)
-        if self.field[y][x + dir_x] == '0':
-            s = list(self.field[y])
-            s[x + dir_x], s[x] = char, '0'
-            self.field[y] = ''.join(s)
-            player.move(dir_x, 0)
+        if dir_y:
+            if self.field[y + dir_y][x] == '0':
+                s = list(self.field[y])
+                s1 = list(self.field[y + dir_y])
+                s[x], s1[x] = '0', char
+                self.field[y] = ''.join(s)
+                self.field[y + dir_y] = ''.join(s1)
+                player.move(0, dir_y)
+            else:
+                player.set_side(1, dir_y)
+        elif dir_x:
+            if self.field[y][x + dir_x] == '0':
+                s = list(self.field[y])
+                s[x + dir_x], s[x] = char, '0'
+                self.field[y] = ''.join(s)
+                player.move(dir_x, 0)
+            else:
+                player.set_side(dir_x, 0)
 
     def action(self, player: Player):
-        side = player.side_x
+        side_x, side_y = player.side_x, player.side_y
         x, y = self.get_coords(player.CHAR)
-        target = self.field[y][x + side]
-        targets = [self.field[y + 1][x], self.field[y][x - 1], self.field[y - 1][x],
-                   self.field[y + 1][x - 1], self.field[y - 1][x - 1]]
-        if shop.CHAR in targets:
+        target = self.field[y + side_y][x + side_x]
+        if target == Shop.CHAR:
             self.open_shop(player)
         elif board.get_player(target):  # Если соседнее поле занял игрок
             self.change_player(player)
+        else:
+            player.attack()
 
     def change_player(self, current_player: Player):
         side = current_player.side_x
@@ -455,7 +478,6 @@ class Level:
                     pos = event.pos
                     shop.highlight(pos)
                     shop.draw_content(player)
-
                 pygame.display.flip()
 
 
