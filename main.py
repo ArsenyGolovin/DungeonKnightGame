@@ -1,8 +1,9 @@
 import os
-import pygame
 import sqlite3
 import sys
 import time
+
+import pygame
 from pygame import draw, transform
 
 width, height = 840, 770
@@ -57,7 +58,7 @@ class Player(pygame.sprite.Sprite):
         self.dmg: int
         self.armor: int
         self.attack_speed_per_second: int
-        self.side_x, self.side_y = 1, 0  # Вправо
+        self.side = [1, 0]  # Вправо
         self.last_attack_time = time.time()
         frames_num = len(os.listdir(os.path.join('data', self.NAME)))
         self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
@@ -82,38 +83,21 @@ class Player(pygame.sprite.Sprite):
 
     def set_side(self, side_x, side_y):
         if side_y:
-            self.side_x = 1
+            self.side[0] = 0
             self.current_frames = self.frames_y[0 if side_y == 1 else 1]
             self.image = self.current_frames[0]
         elif side_x:
-            self.side_x = side_x
+            self.side[0] = side_x
             self.current_frames = self.frames_x
-            self.image = self.current_frames[0] if self.side_x == 1 else transform.flip(
+            self.image = self.current_frames[0] if self.side[0] == 1 else transform.flip(
                 self.current_frames[0], True, False)
-        self.side_y = side_y
+        self.side[1] = side_y
         update_screen()
 
     # Двигает персонажа на заданное число клеток, при необходимости меняя изображение
     def move(self, x: int, y: int):
         self.rect.move_ip(x * Board.CELL_SIZE[0], y * Board.CELL_SIZE[1])
-        if y == 0:
-            self.current_frames = self.frames_x
-            if self.side_x == 1:
-                self.side_y = 0
-                if x == -1:
-                    self.image = transform.flip(self.current_frames[0], True, False)
-                    self.side_x = -1
-                else:
-                    self.image = self.current_frames[0]
-            elif x == 1:
-                self.image = self.current_frames[0]
-                self.side_x = 1
-        else:
-            self.current_frames = self.frames_y[0] if y == 1 else self.frames_y[1]
-            self.image = self.current_frames[0]
-            self.side_y = y
-            self.side_x = 1
-        update_screen()
+        self.set_side(x, y)
 
     def attack(self):
         # Ограничивает скорость атаки игрока
@@ -121,15 +105,15 @@ class Player(pygame.sprite.Sprite):
             return
         clock = pygame.time.Clock()
         for i in range(len(self.frames_x)):
-            if self.side_y == 0:
-                self.image = self.current_frames[i] if self.side_x == 1 else transform.flip(
-                    self.current_frames[i], True, False)
+            if self.side[1] == 0:
+                self.image = transform.flip(
+                    self.current_frames[i], True, False) if self.side[0] == -1 else self.current_frames[i]
             else:
                 self.image = self.current_frames[i]
             update_screen()
             clock.tick(10)
-        self.image = (self.current_frames[0] if self.side_x == 1 else transform.flip(
-            self.current_frames[0], True, False)) if self.side_y == 0 else self.current_frames[0]
+        self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
+                      else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
 
 
@@ -436,7 +420,7 @@ class Level:
                 player.set_side(dir_x, 0)
 
     def action(self, player: Player):
-        side_x, side_y = player.side_x, player.side_y
+        side_x, side_y = player.side
         x, y = self.get_coords(player.CHAR)
         target = self.field[y + side_y][x + side_x]
         if target == Shop.CHAR:
@@ -447,14 +431,17 @@ class Level:
             player.attack()
 
     def change_player(self, current_player: Player):
-        side = current_player.side_x
+        side_x, side_y = current_player.side
         x, y = self.get_coords(current_player.CHAR)
-        player2 = board.get_player(self.field[y][x + side])
+        player2 = board.get_player(self.field[y + side_y][x + side_x])
         if player2.unlocked:
             self.field[y] = list(self.field[y])
-            self.field[y][x], self.field[y][x + side] = self.field[y][x + side], self.field[y][x]
+            self.field[y + side_y] = list(self.field[y + side_y])
+            self.field[y][x], self.field[y + side_y][x + side_x] = self.field[y + side_y][x + side_x], self.field[y][x]
             self.field[y] = ''.join(self.field[y])
+            self.field[y + side_y] = ''.join(self.field[y + side_y])
             board.current_player = player2
+        current_player.set_side(1, 0)
 
     @staticmethod
     def open_shop(player: Player):
