@@ -3,6 +3,7 @@ import sqlite3
 import sys
 import time
 
+import numpy as np
 import pygame
 from pygame import draw, transform
 
@@ -54,19 +55,24 @@ class Player(pygame.sprite.Sprite):
 
     def __init__(self):
         super().__init__()
-        self.hp: int
-        self.dmg: int
-        self.armor: int
-        self.attack_speed_per_second: int
+        self.hp = 0
+        self.dmg = 0
+        self.armor = 0
+        self.attack_speed_per_second = .0
         self.side = [1, 0]  # Вправо
+        # 1 - игрок может атаковать поле, 0 - не может
+        # Игрок находится в центре, смотрит вправо
+        self.attack_zone = np.array(((0, 0, 0),
+                                     (0, 0, 0),
+                                     (0, 0, 0)), dtype=bool)
         self.last_attack_time = time.time()
-        frames_num = len(os.listdir(os.path.join('data', self.NAME)))
+        frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
         self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
-                              for i in range(frames_num // 3))
+                              for i in range(frames_num))
         # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
         # Название изображения начинается с "1" или "-1"
         frames_y = [[], []]
-        for i in range(frames_num // 3):
+        for i in range(frames_num):
             frames_y[0].append(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE))
             frames_y[1].append(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE))
         self.frames_y = tuple(tuple(x) for x in frames_y)
@@ -115,6 +121,18 @@ class Player(pygame.sprite.Sprite):
         self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
                       else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
+        p_coords = board.current_level.get_coords(self.CHAR)
+        for x in np.transpose(np.nonzero(self.attack_zone)):
+            a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
+            if board.current_level.get_cell(a_x, a_y) == '0':
+                r = pygame.Surface(Board.CELL_SIZE)
+                r.set_alpha(50)
+                r.fill('red')
+                screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
+                                *Board.CELL_SIZE))
+        pygame.display.flip()
+        clock = pygame.time.Clock()
+        clock.tick(7)
 
 
 class PlayerSword(Player):
@@ -129,6 +147,9 @@ class PlayerSword(Player):
         self.dmg = 20
         self.armor = 10
         self.attack_speed_per_second = 4.0
+        self.attack_zone = np.array(((0, 0, 1),
+                                     (0, 0, 1),
+                                     (0, 0, 1)), dtype=bool)
 
 
 class PlayerAxe(Player):
@@ -139,9 +160,12 @@ class PlayerAxe(Player):
     def __init__(self):
         super().__init__()
         self.hp = 120
-        self.dmg = 40
+        self.dmg = 55
         self.armor = 25
         self.attack_speed_per_second = 2.0
+        self.attack_zone = np.array(((0, 0, 1),
+                                     (0, 0, 1),
+                                     (0, 0, 0)), dtype=bool)
 
 
 class PlayerKope(Player):
@@ -152,9 +176,12 @@ class PlayerKope(Player):
     def __init__(self):
         super().__init__()
         self.hp = 90
-        self.dmg = 50
+        self.dmg = 80
         self.armor = 10
         self.attack_speed_per_second = 1.5
+        self.attack_zone = np.array(((0, 0, 0),
+                                     (0, 0, 1),
+                                     (0, 0, 0)), dtype=bool)
 
 
 class Shop:
