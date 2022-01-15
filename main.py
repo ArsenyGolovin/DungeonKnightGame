@@ -399,15 +399,15 @@ class Board:
                 return x
 
     def mainloop(self):
-        running = True
-        while running:
+        while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     terminate()
                 if event.type == pygame.KEYDOWN:
-                    dir_x, dir_y = 0, 0
                     if event.key == pygame.K_ESCAPE:
                         terminate()
+                    dir_x, dir_y = 0, 0
+                    ctrl_pressed = pygame.key.get_mods() & pygame.KMOD_CTRL
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
                     if event.key == pygame.K_RIGHT:
@@ -416,7 +416,10 @@ class Board:
                         dir_y -= 1
                     if event.key == pygame.K_DOWN:
                         dir_y += 1
-                    self.current_level.move_player(dir_x, dir_y, self.current_player)
+                    if ctrl_pressed:
+                        self.current_player.set_side(dir_x, dir_y)
+                    else:
+                        self.current_level.move_player(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
             update_screen()
