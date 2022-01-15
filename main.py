@@ -60,15 +60,18 @@ class Player(pygame.sprite.Sprite):
         self.armor = 0
         self.attack_speed_per_second = .0
         self.side = [1, 0]  # Вправо
+
         # 1 - игрок может атаковать поле, 0 - не может
         # Игрок находится в центре, смотрит вправо
-        self.attack_zone = np.array(((0, 0, 0),
-                                     (0, 0, 0),
-                                     (0, 0, 0)), dtype=bool)
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 0),
+                                       (0, 0, 0)), dtype=bool)
+
         self.last_attack_time = time.time()
         frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
         self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
                               for i in range(frames_num))
+
         # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
         # Название изображения начинается с "1" или "-1"
         frames_y = [[], []]
@@ -109,6 +112,7 @@ class Player(pygame.sprite.Sprite):
         # Ограничивает скорость атаки игрока
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
+
         clock = pygame.time.Clock()
         for i in range(len(self.frames_x)):
             if self.side[1] == 0:
@@ -121,12 +125,25 @@ class Player(pygame.sprite.Sprite):
         self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
                       else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
+        self.show_attacked_cells()
+
+    def show_attacked_cells(self):
         p_coords = board.current_level.get_coords(self.CHAR)
-        for x in np.transpose(np.nonzero(self.attack_zone)):
+
+        # Поворачивает массив атакуемых клеток в зависсимости от направления игрока
+        rotation_num = 0
+        if self.side[1] == -1:
+            rotation_num = 1
+        elif self.side[1] == 1:
+            rotation_num = 3
+        elif self.side[0] == -1:
+            rotation_num = 2
+
+        for x in np.transpose(np.nonzero(np.rot90(self.attacked_zone, k=rotation_num))):
             a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
             if board.current_level.get_cell(a_x, a_y) == '0':
                 r = pygame.Surface(Board.CELL_SIZE)
-                r.set_alpha(50)
+                r.set_alpha(35)
                 r.fill('red')
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
@@ -147,9 +164,9 @@ class PlayerSword(Player):
         self.dmg = 20
         self.armor = 10
         self.attack_speed_per_second = 4.0
-        self.attack_zone = np.array(((0, 0, 1),
-                                     (0, 0, 1),
-                                     (0, 0, 1)), dtype=bool)
+        self.attacked_zone = np.array(((0, 0, 1),
+                                       (0, 0, 1),
+                                       (0, 0, 1)), dtype=bool)
 
 
 class PlayerAxe(Player):
@@ -163,9 +180,9 @@ class PlayerAxe(Player):
         self.dmg = 55
         self.armor = 25
         self.attack_speed_per_second = 2.0
-        self.attack_zone = np.array(((0, 0, 1),
-                                     (0, 0, 1),
-                                     (0, 0, 0)), dtype=bool)
+        self.attacked_zone = np.array(((0, 0, 1),
+                                       (0, 0, 1),
+                                       (0, 0, 0)), dtype=bool)
 
 
 class PlayerKope(Player):
@@ -179,9 +196,9 @@ class PlayerKope(Player):
         self.dmg = 80
         self.armor = 10
         self.attack_speed_per_second = 1.5
-        self.attack_zone = np.array(((0, 0, 0),
-                                     (0, 0, 1),
-                                     (0, 0, 0)), dtype=bool)
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 1),
+                                       (0, 0, 0)), dtype=bool)
 
 
 class Shop:
