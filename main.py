@@ -3,6 +3,7 @@ import sqlite3
 import sys
 import time
 
+import numpy as np
 import pygame
 from pygame import draw, transform
 
@@ -76,14 +77,22 @@ class Player(pygame.sprite.Sprite):
         self.armor = 1
         self.attack_speed_per_second = 1
         self.side = [1, 0]  # Вправо
+
+        # 1 - игрок может атаковать поле, 0 - не может
+        # Игрок находится в центре, смотрит вправо
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 0),
+                                       (0, 0, 0)), dtype=bool)
+
         self.last_attack_time = time.time()
-        frames_num = len(os.listdir(os.path.join('data', self.NAME)))
+        frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
         self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
-                              for i in range(frames_num // 3))
+                              for i in range(frames_num))
+
         # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
         # Название изображения начинается с "1" или "-1"
         frames_y = [[], []]
-        for i in range(frames_num // 3):
+        for i in range(frames_num):
             frames_y[0].append(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE))
             frames_y[1].append(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE))
         self.frames_y = tuple(tuple(x) for x in frames_y)
@@ -120,6 +129,7 @@ class Player(pygame.sprite.Sprite):
         # Ограничивает скорость атаки игрока
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
+
         clock = pygame.time.Clock()
         for i in range(len(self.frames_x)):
             if self.side[1] == 0:
@@ -132,6 +142,31 @@ class Player(pygame.sprite.Sprite):
         self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
                       else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
+        self.show_attacked_cells()
+
+    def show_attacked_cells(self):
+        p_coords = board.current_level.get_coords(self.CHAR)
+
+        # Поворачивает массив атакуемых клеток в зависсимости от направления игрока
+        rotation_num = 0
+        if self.side[1] == -1:
+            rotation_num = 1
+        elif self.side[1] == 1:
+            rotation_num = 3
+        elif self.side[0] == -1:
+            rotation_num = 2
+
+        for x in np.transpose(np.nonzero(np.rot90(self.attacked_zone, k=rotation_num))):
+            a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
+            if board.current_level.get_cell(a_x, a_y) == '0':
+                r = pygame.Surface(Board.CELL_SIZE)
+                r.set_alpha(35)
+                r.fill('red')
+                screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
+                                *Board.CELL_SIZE))
+        pygame.display.flip()
+        clock = pygame.time.Clock()
+        clock.tick(7)
 
 
 class PlayerSword(Player):
@@ -146,6 +181,9 @@ class PlayerSword(Player):
         self.dmg = 20
         self.armor = 10
         self.attack_speed_per_second = 4.0
+        self.attacked_zone = np.array(((0, 0, 1),
+                                       (0, 0, 1),
+                                       (0, 0, 1)), dtype=bool)
 
 
 class PlayerAxe(Player):
@@ -156,9 +194,12 @@ class PlayerAxe(Player):
     def __init__(self):
         super().__init__()
         self.hp = 120
-        self.dmg = 40
+        self.dmg = 55
         self.armor = 25
         self.attack_speed_per_second = 2.0
+        self.attacked_zone = np.array(((0, 0, 1),
+                                       (0, 0, 1),
+                                       (0, 0, 0)), dtype=bool)
 
 
 class PlayerKope(Player):
@@ -169,9 +210,12 @@ class PlayerKope(Player):
     def __init__(self):
         super().__init__()
         self.hp = 90
-        self.dmg = 50
+        self.dmg = 80
         self.armor = 10
         self.attack_speed_per_second = 1.5
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 1),
+                                       (0, 0, 0)), dtype=bool)
 
 
 class Shop:
@@ -227,7 +271,6 @@ class Shop:
         screen.blit(text, txt_pos)
 
     def draw(self, player: Player):
-        # FFCC66
         screen.fill('#FF9900')
         draw.rect(screen, 'red', (20, 90, 270, 540), 3)
         for i in range(1, 7):
@@ -400,15 +443,15 @@ class Board:
                 return x
 
     def mainloop(self):
-        running = True
-        while running:
+        while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     terminate()
                 if event.type == pygame.KEYDOWN:
-                    dir_x, dir_y = 0, 0
                     if event.key == pygame.K_ESCAPE:
                         terminate()
+                    dir_x, dir_y = 0, 0
+                    ctrl_pressed = pygame.key.get_mods() & pygame.KMOD_CTRL
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
                     if event.key == pygame.K_RIGHT:
@@ -417,7 +460,10 @@ class Board:
                         dir_y -= 1
                     if event.key == pygame.K_DOWN:
                         dir_y += 1
-                    self.current_level.move_player(dir_x, dir_y, self.current_player)
+                    if ctrl_pressed:
+                        self.current_player.set_side(dir_x, dir_y)
+                    else:
+                        self.current_level.move_player(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
             update_screen()
@@ -447,17 +493,12 @@ class Level:
         x, y = player.get_coords()
         if dir_y:
             if self.field[y + dir_y][x] == '0':
-                self.field[y] = list(self.field[y])
-                self.field[y + dir_y] = list(self.field[y + dir_y])
                 self.field[y][x], self.field[y + dir_y][x] = '0', char
                 player.move(0, dir_y)
             else:
                 player.set_side(1, dir_y)
-
         elif dir_x:
             if self.field[y][x + dir_x] == '0':
-                self.field[x + dir_x] = list(self.field[x + dir_x])
-                self.field[y] = list(self.field[y])
                 s = self.field[y]
                 s[x + dir_x], s[x] = char, '0'
                 player.move(dir_x, 0)
@@ -472,7 +513,7 @@ class Level:
             self.open_shop(player)
         elif board.get_player(target):  # Если соседнее поле занял игрок
             self.change_player(player)
-        elif target in ['2', '3']:
+        elif target in '23':
             if board.NUMBER_LEVEL == 0:
                 for i in all_sprites:
                     i.kill()
@@ -497,13 +538,9 @@ class Level:
         x, y = self.get_coords(current_player.CHAR)
         player2 = board.get_player(self.field[y + side_y][x + side_x])
         if player2.unlocked:
-            self.field[y + side_y] = list(self.field[y + side_y])
-            self.field[y] = list(self.field[y])
             self.field[y][x], self.field[y + side_y][x + side_x] = self.field[y + side_y][x + side_x], self.field[y][x]
             current_player.set_side(1, 0)
             board.current_player = player2
-            self.field[y] = ''.join(self.field[y])
-            self.field[y + side_y] = ''.join(self.field[y + side_y])
 
     @staticmethod
     def open_shop(player: Player):
