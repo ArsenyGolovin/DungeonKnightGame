@@ -1,10 +1,9 @@
+import numpy as np
 import os
+import pygame
 import sqlite3
 import sys
 import time
-
-import numpy as np
-import pygame
 from pygame import draw, transform
 
 width, height = 840, 770
@@ -18,7 +17,7 @@ cur = con.cursor()
 
 def update_screen():
     screen.fill('black')
-    board.draw_level()
+    board.draw_level(board.current_level)
     all_sprites.draw(screen)
     pygame.display.flip()
 
@@ -45,23 +44,6 @@ def terminate():
     con.commit()
     pygame.quit()
     sys.exit()
-
-
-def change_level(old, nextlvl, fon, sygnal):
-    board.current_level = nextlvl
-
-    x, y = 0, 0
-    if sygnal == 1: y, x = 5, 1
-    if sygnal == 2: y, x = 6, 1
-    if sygnal == 3: y, x = 5, 10
-    if sygnal == 4: y, x = 6, 10
-
-    board.current_level.field[y] = list(board.current_level.field[y])
-    old.field[y] = list(old.field[y])
-    board.current_level.field[y][x], old.field[y][x] = board.current_player.CHAR, '0'
-
-    board.FLOOR_IMAGE = load_image(fon)
-    board.draw_level()
 
 
 class Player(pygame.sprite.Sprite):
@@ -107,7 +89,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.x = x * Board.CELL_SIZE[0]
         self.rect.y = y * Board.CELL_SIZE[1]
 
-    def set_side(self, side_x, side_y):
+    def set_side(self, side_x: int, side_y: int):
         if side_y:
             self.side[0] = 0
             self.current_frames = self.frames_y[0 if side_y == 1 else 1]
@@ -118,7 +100,7 @@ class Player(pygame.sprite.Sprite):
             self.image = self.current_frames[0] if self.side[0] == 1 else transform.flip(
                 self.current_frames[0], True, False)
         self.side[1] = side_y
-        update_screen()
+        #update_screen()
 
     # Двигает персонажа на заданное число клеток, при необходимости меняя изображение
     def move(self, x: int, y: int):
@@ -318,42 +300,18 @@ class Shop:
 
 class Board:
     CELL_SIZE = (70, 70)
-    WALL_IMAGE = load_image('box.jpg')
-    FLOOR_IMAGE = load_image('floor0.jpg')
-    DOOR1_IMAGE = load_image('door.png')
-    DOOR2_IMAGE = load_image('door2.png')
-    NUMBER_LEVEL = 0
 
     def __init__(self):
-        self.level0 = self.load_level('map.txt')
-        self.level1 = self.load_level('map1.txt')
-        self.current_level = self.level0
-        self.old_level = self.level1
+        self.levels = (Level(0), Level(1))
+        self.current_level = self.levels[0]
         self.players = {'sword': sword, 'axe': axe, 'kope': kope}
-        self.current_player: Player = self.players['sword']
+        self.current_player = self.players['sword']
 
-        # если начальный уровень
-        if self.current_level.get_coords('H'):
-            player_db = cur.execute("SELECT current_player from Player")
-            for i in player_db:
-                self.current_player = self.players[i[0]]
-                xa, ya = self.current_level.get_coords('A')
-                xs, ys = self.current_level.get_coords('S')
-                xk, yk = self.current_level.get_coords('K')
-                if i[0] == 'axe':
-                    self.current_level.field[ya] = list(self.current_level.field[ya])
-                    self.current_level.field[ys] = list(self.current_level.field[ys])
-                    self.current_level.field[ya][xa], self.current_level.field[ys][xs] = \
-                        self.current_level.field[ys][xs], self.current_level.field[ya][xa]
-                    self.current_level.field[ya] = ''.join(self.current_level.field[ya])
-                    self.current_level.field[ys] = ''.join(self.current_level.field[ys])
-                elif i[0] == 'kope':
-                    self.current_level.field[yk] = list(self.current_level.field[yk])
-                    self.current_level.field[ys] = list(self.current_level.field[ys])
-                    self.current_level.field[yk][xk], self.current_level.field[ys][xs] = \
-                        self.current_level.field[ys][xs], self.current_level.field[yk][xk]
-                    self.current_level.field[yk] = ''.join(self.current_level.field[yk])
-                    self.current_level.field[ys] = ''.join(self.current_level.field[ys])
+        # Если текущий уровень - начальный
+        if self.current_level == self.levels[0]:
+            current_player = self.players[cur.execute("SELECT current_player from Player").fetchone()[0]]
+            self.current_level.swap_players(self.current_player, current_player)
+            self.current_player = current_player
 
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
@@ -389,58 +347,72 @@ class Board:
             pygame.display.flip()
         self.mainloop()
 
-    @staticmethod
-    def load_level(filename: str):
-        return Level(filename)
-
-    def draw_level(self):
+    def draw_level(self, level: Level):
         field = self.current_level.get_field()
         for y in range(len(field)):
             for x in range(len(field[y])):
                 char = field[y][x]
+                images = []
                 if char == '0':
-                    self.draw_image('floor', x, y)
+                    images.append('floor')
                 elif char == '1':
-                    self.draw_image('wall', x, y)
+                    images.append('wall')
                 elif char == PlayerSword.CHAR:
-                    self.draw_image('floor', x, y)
-                    self.draw_image('sword', x, y)
+                    images.append('floor')
+                    images.append('sword')
                 elif char == PlayerKope.CHAR:
-                    self.draw_image('floor', x, y)
-                    self.draw_image('kope', x, y)
+                    images.append('floor')
+                    images.append('kope')
                 elif char == PlayerAxe.CHAR:
-                    self.draw_image('floor', x, y)
-                    self.draw_image('axe', x, y)
+                    images.append('floor')
+                    images.append('axe')
                 elif char == '2':
-                    self.draw_image('door', x, y)
+                    images.append('door')
                 elif char == '3':
-                    self.draw_image('door2', x, y)
+                    images.append('door2')
                 elif char == Shop.CHAR:
-                    self.draw_image('floor', x, y)
-                    self.draw_image('shop', x, y)
+                    images.append('floor')
+                    images.append('shop')
+                for im in images:
+                    self.draw_image(im, x, y, level)
 
-    def draw_image(self, obj: str, x: int, y: int):
+    def change_level(self, next_level, signal):
+        x, y = 0, 0
+        if signal == 1:
+            y, x = 5, 1
+        elif signal == 2:
+            y, x = 6, 1
+        elif signal == 3:
+            y, x = 5, 10
+        elif signal == 4:
+            y, x = 6, 10
+
+        next_level.field[y][x], self.current_level.field[y][x] = board.current_player.CHAR, '0'
+        self.draw_level(next_level)
+        self.current_level = next_level
+
+    def draw_image(self, obj: str, x: int, y: int, level: Level):
         img: pygame.Surface
         size = Board.CELL_SIZE
         if obj == 'wall':
-            img = transform.scale(Board.WALL_IMAGE, size)
+            img = transform.scale(level.wall_image, size)
         elif obj == 'floor':
-            img = transform.scale(Board.FLOOR_IMAGE, size)
+            img = transform.scale(level.floor_image, size)
         elif obj == 'door':
-            img = transform.scale(Board.DOOR1_IMAGE, size)
+            img = transform.scale(level.door1_image, size)
         elif obj == 'door2':
-            img = transform.scale(Board.DOOR2_IMAGE, size)
+            img = transform.scale(level.door2_image, size)
         elif obj == 'shop':
-            img = transform.scale(Shop.IMAGE, size)
+            img = transform.scale(level.shop_image, size)
         else:
             self.players[obj].set_coords(x, y)
             return
         screen.blit(img, (x * size[0], y * size[1]))
 
-    def get_player(self, char: str):
-        for x in self.players.values():
-            if x.CHAR == char:
-                return x
+    def get_player_from_char(self, char: str) -> Player:
+        for player in self.players.values():
+            if player.CHAR == char:
+                return player
 
     def mainloop(self):
         while True:
@@ -470,8 +442,13 @@ class Board:
 
 
 class Level:
-    def __init__(self, name: str):
-        with open('data/' + name) as mapFile:
+    def __init__(self, num: int, wall_image=load_image('box.jpg'), floor_image=load_image('floor0.jpg')):
+        self.wall_image = wall_image
+        self.floor_image = floor_image
+        self.door1_image = load_image('door.png')
+        self.door2_image = load_image('door2.png')
+        self.shop_image = load_image('shop.png', colorkey=-1)
+        with open('data/levels/' + f'{num}.txt') as mapFile:
             level_map = [line.strip() for line in mapFile]
         max_width = max(map(len, level_map))
         self.field = list(map(lambda x: list(x.ljust(max_width, '.')), level_map))
@@ -511,36 +488,39 @@ class Level:
         target = self.field[y + side_y][x + side_x]
         if target == Shop.CHAR:
             self.open_shop(player)
-        elif board.get_player(target):  # Если соседнее поле занял игрок
+        elif board.get_player_from_char(target):  # Если соседнее поле занял игрок
             self.change_player(player)
-        elif target in '23':
-            if board.NUMBER_LEVEL == 0:
+        elif target in '23':  # Дверь
+            current_level_num = board.levels.index(board.current_level)
+            if current_level_num == 0:
                 for i in all_sprites:
                     i.kill()
                 all_sprites.add(player)
-                change_level(board.level0, board.level1, 'floor0.jpg', int(target) - 1)
-                board.NUMBER_LEVEL = 1
-            elif board.NUMBER_LEVEL == 1:
+                board.change_level(board.levels[1], int(target) - 1)
+            elif current_level_num == 1:
                 for i in all_sprites:
                     i.kill()
                 all_sprites.add(sword, axe, kope)
-                if side_x < 0:  # дверь слева
-                    change_level(board.level1, board.level0, 'floor0.jpg', int(target) + 1)
-                    board.NUMBER_LEVEL = 0
-                elif side_x > 0:  # дверь справа
-                    change_level(board.level1, board.level0, 'floor0.jpg', int(target) + 1)
-                    board.NUMBER_LEVEL = 0
+                if side_x == -1:  # Дверь слева
+                    board.change_level(board.levels[0], int(target) + 1)
+                elif side_x == 1:  # Дверь справа
+                    board.change_level(board.levels[0], int(target) + 1)
         else:
             player.attack()
 
     def change_player(self, current_player: Player):
         side_x, side_y = current_player.side
         x, y = self.get_coords(current_player.CHAR)
-        player2 = board.get_player(self.field[y + side_y][x + side_x])
+        player2 = board.get_player_from_char(self.field[y + side_y][x + side_x])
         if player2.unlocked:
-            self.field[y][x], self.field[y + side_y][x + side_x] = self.field[y + side_y][x + side_x], self.field[y][x]
-            current_player.set_side(1, 0)
+            self.swap_players(current_player, player2)
             board.current_player = player2
+
+    def swap_players(self, current_player: Player, player2: Player):
+        x1, y1 = self.get_coords(current_player.CHAR)
+        x2, y2 = self.get_coords(player2.CHAR)
+        self.field[y1][x1], self.field[y2][x2] = self.field[y2][x2], self.field[y1][x1]
+        current_player.set_side(1, 0)
 
     @staticmethod
     def open_shop(player: Player):
