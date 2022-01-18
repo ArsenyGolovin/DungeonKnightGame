@@ -366,6 +366,10 @@ class Board:
                 elif char == PlayerAxe.CHAR:
                     images.append('floor')
                     images.append('axe')
+                elif char == 'P':
+                    images.append('floor')
+                    images.append(board.current_player.NAME)
+                    self.current_level.get_field()[y][x] = self.current_player.CHAR
                 elif char == '2':
                     images.append('door')
                 elif char == '3':
@@ -387,7 +391,7 @@ class Board:
         elif signal == 4:
             y, x = 6, 10
 
-        next_level.field[y][x], self.current_level.field[y][x] = board.current_player.CHAR, '0'
+        self.current_level.field[y][x] = '0'
         self.draw_level(next_level)
         self.current_level = next_level
 
