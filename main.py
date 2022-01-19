@@ -1,9 +1,10 @@
-import numpy as np
 import os
-import pygame
 import sqlite3
 import sys
 import time
+
+import numpy as np
+import pygame
 from pygame import draw, transform
 
 width, height = 840, 770
@@ -17,7 +18,7 @@ cur = con.cursor()
 
 def update_screen():
     screen.fill('black')
-    board.draw_level(board.current_level)
+    board.draw_level()
     all_sprites.draw(screen)
     pygame.display.flip()
 
@@ -48,7 +49,6 @@ def terminate():
 
 class Player(pygame.sprite.Sprite):
     BIG_IMAGE: pygame.Surface
-    CHAR: str
     NAME: str
     unlocked = False
 
@@ -100,7 +100,6 @@ class Player(pygame.sprite.Sprite):
             self.image = self.current_frames[0] if self.side[0] == 1 else transform.flip(
                 self.current_frames[0], True, False)
         self.side[1] = side_y
-        #update_screen()
 
     # Двигает персонажа на заданное число клеток, при необходимости меняя изображение
     def move(self, x: int, y: int):
@@ -336,7 +335,7 @@ class Board:
             intro_rect.x = 10
             text_coord += intro_rect.height
             screen.blit(string_rendered, intro_rect)
-
+        pygame.display.flip()
         running = True
         while running:
             for event in pygame.event.get():
@@ -344,10 +343,9 @@ class Board:
                     terminate()
                 elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     running = False
-            pygame.display.flip()
         self.mainloop()
 
-    def draw_level(self, level: Level):
+    def draw_level(self):
         field = self.current_level.get_field()
         for y in range(len(field)):
             for x in range(len(field[y])):
@@ -366,10 +364,6 @@ class Board:
                 elif char == PlayerAxe.CHAR:
                     images.append('floor')
                     images.append('axe')
-                elif char == 'P':
-                    images.append('floor')
-                    images.append(board.current_player.NAME)
-                    self.current_level.get_field()[y][x] = self.current_player.CHAR
                 elif char == '2':
                     images.append('door')
                 elif char == '3':
@@ -378,26 +372,29 @@ class Board:
                     images.append('floor')
                     images.append('shop')
                 for im in images:
-                    self.draw_image(im, x, y, level)
+                    self.draw_image(im, x, y)
 
-    def change_level(self, next_level, signal):
-        x, y = 0, 0
-        if signal == 1:
-            y, x = 5, 1
-        elif signal == 2:
-            y, x = 6, 1
-        elif signal == 3:
-            y, x = 5, 10
-        elif signal == 4:
-            y, x = 6, 10
-
-        self.current_level.field[y][x] = '0'
-        self.draw_level(next_level)
+    def change_level(self, next_level, door_num):
+        # Место появления игрока на следующем уровне
+        n_x, n_y = 0, 0
+        if door_num == 1:
+            n_y, n_x = 5, 1
+        elif door_num == 2:
+            n_y, n_x = 6, 1
+        elif door_num == 3:
+            n_y, n_x = 5, 10
+        elif door_num == 4:
+            n_y, n_x = 6, 10
+        p_x, p_y = board.current_player.get_coords()
+        next_level.field[n_y][n_x] = board.current_player.CHAR
+        self.current_level.field[p_y][p_x] = '0'
         self.current_level = next_level
+        self.draw_level()
 
-    def draw_image(self, obj: str, x: int, y: int, level: Level):
+    def draw_image(self, obj: str, x: int, y: int):
         img: pygame.Surface
         size = Board.CELL_SIZE
+        level = board.current_level
         if obj == 'wall':
             img = transform.scale(level.wall_image, size)
         elif obj == 'floor':
