@@ -47,18 +47,19 @@ def terminate():
     sys.exit()
 
 
-class Player(pygame.sprite.Sprite):
-    BIG_IMAGE: pygame.Surface
-    NAME: str
-    unlocked = False
+class Entity(pygame.sprite.Sprite):
+    BIG_IMAGE = pygame.Surface((0, 0))
+    CHAR = ''
+    NAME = ''
+    ATTACK_COLOR = ''
 
-    def __init__(self):
+    def __init__(self, side=[1, 0]):
         super().__init__()
         self.hp = 1
         self.dmg = 1
         self.armor = 1
         self.attack_speed_per_second = 1
-        self.side = [1, 0]  # Вправо
+        self.side = side
 
         # 1 - игрок может атаковать поле, 0 - не может
         # Игрок находится в центре, смотрит вправо
@@ -68,18 +69,19 @@ class Player(pygame.sprite.Sprite):
 
         self.last_attack_time = time.time()
         frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
-        self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
+        self.frames_x = tuple(transform.scale(load_image(f'{self.NAME}/{i}.png'), Board.CELL_SIZE)
                               for i in range(frames_num))
 
         # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
         # Название изображения начинается с "1" или "-1"
         frames_y = [[], []]
         for i in range(frames_num):
-            frames_y[0].append(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE))
-            frames_y[1].append(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE))
-        self.frames_y = tuple(tuple(x) for x in frames_y)
+            frames_y[0].append(transform.scale(load_image(f'{self.NAME}/{10 + i}.png'), Board.CELL_SIZE))
+            frames_y[1].append(transform.scale(load_image(f'{self.NAME}/{-10 - i}.png'), Board.CELL_SIZE))
+        self.frames_y = (tuple(frames_y[0]), tuple(frames_y[1]))
         self.current_frames = self.frames_x
-        self.image = self.current_frames[0]
+        self.image = transform.flip(self.current_frames[0],
+                                    True, False) if self.side[0] == -1 else self.current_frames[0]
         self.rect = pygame.rect.Rect((0, 0, 70, 70))
 
     def get_coords(self) -> (int, int):
@@ -139,15 +141,41 @@ class Player(pygame.sprite.Sprite):
 
         for x in np.transpose(np.nonzero(np.rot90(self.attacked_zone, k=rotation_num))):
             a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
-            if board.current_level.get_cell(a_x, a_y) == '0':
+            if board.current_level.get_cell(a_x, a_y) in '0G':
                 r = pygame.Surface(Board.CELL_SIZE)
                 r.set_alpha(35)
-                r.fill('red')
+                r.fill(self.ATTACK_COLOR)
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
         pygame.display.flip()
         clock = pygame.time.Clock()
         clock.tick(7)
+
+
+class Goblin(Entity):
+    BIG_IMAGE = load_image('goblin/0.png')
+    CHAR = 'G'
+    NAME = 'goblin'
+    ATTACK_COLOR = 'green'
+
+    def __init__(self, x=0, y=0):
+        super().__init__(side=[-1, 0])
+        self.hp = 115
+        self.dmg = 35
+        self.armor = 15
+        self.attack_speed_per_second = 4.0
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 1),
+                                       (0, 0, 1)), dtype=bool)
+        self.set_coords(x, y)
+
+
+class Player(Entity):
+    ATTACK_COLOR = 'red'
+    unlocked = False
+
+    def __init__(self, side=[1, 0]):
+        super().__init__(side=side)
 
 
 class PlayerSword(Player):
@@ -157,7 +185,7 @@ class PlayerSword(Player):
     unlocked = True
 
     def __init__(self):
-        super().__init__()
+        super().__init__(side=[-1, 0])
         self.hp = 100
         self.dmg = 20
         self.armor = 10
@@ -355,6 +383,9 @@ class Board:
                     images.append('floor')
                 elif char == '1':
                     images.append('wall')
+                elif char == Goblin.CHAR:
+                    images.append('floor')
+                    images.append('goblin')
                 elif char == PlayerSword.CHAR:
                     images.append('floor')
                     images.append('sword')
@@ -406,7 +437,12 @@ class Board:
         elif obj == 'shop':
             img = transform.scale(level.shop_image, size)
         else:
-            self.players[obj].set_coords(x, y)
+            if obj == Goblin.NAME:
+                self.current_level.goblins.draw(screen)
+                pass
+            else:
+                self.players[obj].set_coords(x, y)
+                self.current_level.goblins.draw(screen)
             return
         screen.blit(img, (x * size[0], y * size[1]))
 
@@ -436,7 +472,7 @@ class Board:
                     if ctrl_pressed:
                         self.current_player.set_side(dir_x, dir_y)
                     else:
-                        self.current_level.move_player(dir_x, dir_y, self.current_player)
+                        self.current_level.move_entity(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
             update_screen()
@@ -449,13 +485,21 @@ class Level:
         self.door1_image = load_image('door.png')
         self.door2_image = load_image('door2.png')
         self.shop_image = load_image('shop.png', colorkey=-1)
-        with open('data/levels/' + f'{num}.txt') as mapFile:
-            level_map = [line.strip() for line in mapFile]
+        level_map = [line.strip() for line in open(f'data/levels/{num}.txt')]
         max_width = max(map(len, level_map))
         self.field = list(map(lambda x: list(x.ljust(max_width, '.')), level_map))
+        self.goblins = pygame.sprite.Group()
+        for y in range(len(self.field)):
+            for x in range(len(self.field)):
+                if self.field[y][x] == Goblin.CHAR:
+                    goblin = Goblin(x, y)
+                    self.goblins.add(goblin)
 
     def get_field(self):
         return self.field
+
+    def get_goblin(self, x, y):
+        return [goblin for goblin in self.goblins if goblin.get_coords() == (x, y)][0]
 
     def get_coords(self, elem: str) -> (int, int):
         for y, s in enumerate(self.field):
@@ -466,22 +510,22 @@ class Level:
     def get_cell(self, x: int, y: int) -> str:
         return self.field[y][x]
 
-    def move_player(self, dir_x: int, dir_y: int, player: Player):
-        char = player.CHAR
-        x, y = player.get_coords()
+    def move_entity(self, dir_x: int, dir_y: int, entity: Entity):
+        char = entity.CHAR
+        x, y = entity.get_coords()
         if dir_y:
             if self.field[y + dir_y][x] == '0':
                 self.field[y][x], self.field[y + dir_y][x] = '0', char
-                player.move(0, dir_y)
+                entity.move(0, dir_y)
             else:
-                player.set_side(1, dir_y)
+                entity.set_side(1, dir_y)
         elif dir_x:
             if self.field[y][x + dir_x] == '0':
                 s = self.field[y]
                 s[x + dir_x], s[x] = char, '0'
-                player.move(dir_x, 0)
+                entity.move(dir_x, 0)
             else:
-                player.set_side(dir_x, 0)
+                entity.set_side(dir_x, 0)
 
     def action(self, player: Player):
         side_x, side_y = player.side
@@ -549,8 +593,7 @@ class Level:
 
 
 sword, axe, kope = PlayerSword(), PlayerAxe(), PlayerKope()
-all_sprites = pygame.sprite.Group()
-all_sprites.add(sword, axe, kope)
+all_sprites = pygame.sprite.Group(sword, axe, kope)
 board = Board()
 shop = Shop()
 board.show_start_screen()
