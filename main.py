@@ -16,6 +16,7 @@ attack_sound = pygame.mixer.Sound("data/sword_sound.mp3")
 coin_sound = pygame.mixer.Sound("data/coin_sound.mp3")
 fon_sound.set_volume(0.4)
 coin_sound.set_volume(1.0)
+attack_sound.set_volume(1.0)
 
 con = sqlite3.connect("data/dungeon_knight.db")
 cur = con.cursor()
@@ -317,6 +318,7 @@ class Board:
         self.current_level = self.levels[0]
         self.players = {'sword': sword, 'axe': axe, 'kope': kope}
         self.current_player = self.players['sword']
+        self.flag_sound = True
 
         # Если текущий уровень - начальный
         if self.current_level == self.levels[0]:
@@ -445,6 +447,19 @@ class Board:
                         dir_y -= 1
                     if event.key == pygame.K_DOWN:
                         dir_y += 1
+                    if event.key == pygame.K_q:
+                        if self.flag_sound is True:
+                            coin_sound.set_volume(0.0)
+                            attack_sound.set_volume(0.0)
+                            fon_sound.set_volume(0.0)
+                            self.flag_sound = False
+                        else:
+                            fon_sound.set_volume(0.4)
+                            coin_sound.set_volume(1.0)
+                            attack_sound.set_volume(1.0)
+                            self.flag_sound = True
+
+
                     if ctrl_pressed:
                         self.current_player.set_side(dir_x, dir_y)
                     else:
