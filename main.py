@@ -11,6 +11,7 @@ width, height = 840, 770
 pygame.init()
 screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
 screen.fill('black')
+
 fon_sound = pygame.mixer.Sound("data/fon_sound.mp3")
 attack_sound = pygame.mixer.Sound("data/sword_sound.mp3")
 coin_sound = pygame.mixer.Sound("data/coin_sound.mp3")
@@ -26,6 +27,7 @@ def update_screen():
     screen.fill('black')
     board.draw_level()
     all_sprites.draw(screen)
+    draw_hp_icon()
     pygame.display.flip()
 
 
@@ -45,12 +47,26 @@ def load_image(name, colorkey=None):
 def terminate():
     for x in board.players:
         p: Player = board.players[x]
-        cur.execute("UPDATE Knights SET hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
-                    (p.hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
+        cur.execute("UPDATE Knights SET current_hp=?, max_hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
+                    (p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
     cur.execute("UPDATE Player SET coins=?, current_player=?", (shop.coins, board.current_player.NAME))
     con.commit()
     pygame.quit()
     sys.exit()
+
+
+def draw_hp_icon():
+    draw.rect(screen, 'black', (702, 3, 136, 64), 3)
+    draw.rect(screen, 'white', (705, 6, 130, 58))
+    img = load_image('hp_icon.png', -1)
+    font = pygame.font.SysFont('serif', 37)
+    text = font.render(f'{board.current_player.current_hp}', True, (0, 0, 0))
+    screen.blit(transform.scale(img, (55, 55)), (705, 8))
+    screen.blit(text, (765, 15))
+
+
+def revive_hp():
+    sword.current_hp, kope.current_hp, axe.current_hp = sword.max_hp, kope.max_hp, axe.max_hp
 
 
 class Player(pygame.sprite.Sprite):
@@ -60,7 +76,8 @@ class Player(pygame.sprite.Sprite):
 
     def __init__(self):
         super().__init__()
-        self.hp = 1
+        self.max_hp = 1
+        self.current_hp = 1
         self.dmg = 1
         self.armor = 1
         self.attack_speed_per_second = 1
@@ -165,7 +182,8 @@ class PlayerSword(Player):
 
     def __init__(self):
         super().__init__()
-        self.hp = 100
+        self.max_hp = 100
+        self.current_hp = 100
         self.dmg = 20
         self.armor = 10
         self.attack_speed_per_second = 4.0
@@ -181,7 +199,8 @@ class PlayerAxe(Player):
 
     def __init__(self):
         super().__init__()
-        self.hp = 120
+        self.max_hp = 120
+        self.current_hp = 120
         self.dmg = 55
         self.armor = 25
         self.attack_speed_per_second = 2.0
@@ -197,7 +216,8 @@ class PlayerKope(Player):
 
     def __init__(self):
         super().__init__()
-        self.hp = 90
+        self.max_hp = 90
+        self.current_hp = 90
         self.dmg = 80
         self.armor = 10
         self.attack_speed_per_second = 1.5
@@ -236,7 +256,7 @@ class Shop:
                         self.coins -= 50
                         coin_sound.play(0)
                     elif i == 3 and self.coins >= 10:
-                        player.hp += 1
+                        player.max_hp += 1
                         self.coins -= 10
                         coin_sound.play(0)
                     elif i == 4 and self.coins >= 10:
@@ -289,7 +309,7 @@ class Shop:
 
         icon_size = (60, 60)
         player_img_size = (70, 70)
-        player_specifications_strings = (f'HP   {player.hp}',
+        player_specifications_strings = (f'MAXIMUM HP   {player.max_hp}',
                                          f'DAMAGE   {player.dmg}',
                                          f'ARMOR  {player.armor}',
                                          f'ATTACK SPEED  {player.attack_speed_per_second}',
@@ -329,10 +349,11 @@ class Board:
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
             p: Player = self.players[x[0]]
-            hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
-                f"SELECT hp, damage, armor, attack_speed, unlocked FROM Knights WHERE name = '{x[0]}'").fetchone()
-            p.hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
-                int(hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
+            current_hp, max_hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
+                f"SELECT current_hp, max_hp, damage, armor, attack_speed, unlocked FROM Knights"
+                f" WHERE name = '{x[0]}'").fetchone()
+            p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
+                int(current_hp), int(max_hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
 
     def show_start_screen(self):
         self.load_db_info()
@@ -459,7 +480,6 @@ class Board:
                             attack_sound.set_volume(1.0)
                             self.flag_sound = True
 
-
                     if ctrl_pressed:
                         self.current_player.set_side(dir_x, dir_y)
                     else:
@@ -467,6 +487,8 @@ class Board:
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
             update_screen()
+            if self.current_level == self.levels[0]:
+                revive_hp()
 
 
 class Level:
@@ -563,6 +585,18 @@ class Level:
                 if event_type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
+                    if event.key == pygame.K_q:
+                        if board.flag_sound is True:
+                            coin_sound.set_volume(0.0)
+                            attack_sound.set_volume(0.0)
+                            fon_sound.set_volume(0.0)
+                            board.flag_sound = False
+                        else:
+                            fon_sound.set_volume(0.4)
+                            coin_sound.set_volume(1.0)
+                            attack_sound.set_volume(1.0)
+                            board.flag_sound = True
+
                 if event_type == pygame.MOUSEBUTTONDOWN:
                     pos = event.pos
                     shop.buy(pos, board.current_player)
@@ -582,3 +616,4 @@ board = Board()
 fon_sound.play(-1)
 shop = Shop()
 board.show_start_screen()
+revive_hp()
