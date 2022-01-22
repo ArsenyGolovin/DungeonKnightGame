@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pygame
 from pygame import draw, transform
+import random
 
 width, height = 840, 770
 pygame.init()
@@ -69,19 +70,20 @@ def revive_hp():
     sword.current_hp, kope.current_hp, axe.current_hp = sword.max_hp, kope.max_hp, axe.max_hp
 
 
-class Player(pygame.sprite.Sprite):
-    BIG_IMAGE: pygame.Surface
-    NAME: str
-    unlocked = False
+class Entity(pygame.sprite.Sprite):
+    BIG_IMAGE = pygame.Surface((0, 0))
+    CHAR = ''
+    NAME = ''
+    ATTACK_COLOR = ''
+    ATTACKED_CHARS = ''  # Клетки, которые подсвечиваются и получают урон при атаке
 
-    def __init__(self):
+    def __init__(self, side=[1, 0]):
         super().__init__()
-        self.max_hp = 1
-        self.current_hp = 1
+        self.hp = 1
         self.dmg = 1
         self.armor = 1
         self.attack_speed_per_second = 1
-        self.side = [1, 0]  # Вправо
+        self.side = side
 
         # 1 - игрок может атаковать поле, 0 - не может
         # Игрок находится в центре, смотрит вправо
@@ -91,18 +93,19 @@ class Player(pygame.sprite.Sprite):
 
         self.last_attack_time = time.time()
         frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
-        self.frames_x = tuple(transform.scale(load_image(os.path.join(self.NAME, f'{i}.png')), Board.CELL_SIZE)
+        self.frames_x = tuple(transform.scale(load_image(f'{self.NAME}/{i}.png'), Board.CELL_SIZE)
                               for i in range(frames_num))
 
         # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
         # Название изображения начинается с "1" или "-1"
         frames_y = [[], []]
         for i in range(frames_num):
-            frames_y[0].append(transform.scale(load_image(os.path.join(self.NAME, f'{10 + i}.png')), Board.CELL_SIZE))
-            frames_y[1].append(transform.scale(load_image(os.path.join(self.NAME, f'{-10 - i}.png')), Board.CELL_SIZE))
-        self.frames_y = tuple(tuple(x) for x in frames_y)
+            frames_y[0].append(transform.scale(load_image(f'{self.NAME}/{10 + i}.png'), Board.CELL_SIZE))
+            frames_y[1].append(transform.scale(load_image(f'{self.NAME}/{-10 - i}.png'), Board.CELL_SIZE))
+        self.frames_y = (tuple(frames_y[0]), tuple(frames_y[1]))
         self.current_frames = self.frames_x
-        self.image = self.current_frames[0]
+        self.image = transform.flip(self.current_frames[0],
+                                    True, False) if self.side[0] == -1 else self.current_frames[0]
         self.rect = pygame.rect.Rect((0, 0, 70, 70))
 
     def get_coords(self) -> (int, int):
@@ -134,8 +137,6 @@ class Player(pygame.sprite.Sprite):
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
 
-        clock = pygame.time.Clock()
-        attack_sound.play(0)
         for i in range(len(self.frames_x)):
             if self.side[1] == 0:
                 self.image = transform.flip(
@@ -149,29 +150,236 @@ class Player(pygame.sprite.Sprite):
         self.last_attack_time = time.time()
         self.show_attacked_cells()
 
+    def transpose_attack_array(self, side=[0, 0]) -> np.array:
+        # Поворачивает массив атакуемых клеток в зависсимости от направления существа
+        if side == [0, 0]:
+            side = self.side
+        attacked_zone = self.attacked_zone
+        if side[1] == -1:
+            attacked_zone = np.rot90(attacked_zone, k=1)
+        elif side[1] == 1:
+            attacked_zone = np.rot90(attacked_zone, k=3)
+        elif side[0] == -1:
+            attacked_zone = attacked_zone[::, ::-1]
+        return np.transpose(np.nonzero(attacked_zone))
+
     def show_attacked_cells(self):
         p_coords = board.current_level.get_coords(self.CHAR)
-
-        # Поворачивает массив атакуемых клеток в зависсимости от направления игрока
-        rotation_num = 0
-        if self.side[1] == -1:
-            rotation_num = 1
-        elif self.side[1] == 1:
-            rotation_num = 3
-        elif self.side[0] == -1:
-            rotation_num = 2
-
-        for x in np.transpose(np.nonzero(np.rot90(self.attacked_zone, k=rotation_num))):
-            a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
-            if board.current_level.get_cell(a_x, a_y) == '0':
+        for y, x in self.transpose_attack_array():
+            a_x, a_y = p_coords[0] + x - 1, p_coords[1] + y - 1
+            if board.current_level.get_cell(a_x, a_y) in self.ATTACKED_CHARS:
                 r = pygame.Surface(Board.CELL_SIZE)
                 r.set_alpha(35)
-                r.fill('red')
+                r.fill(self.ATTACK_COLOR)
+                screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
+                                *Board.CELL_SIZE))
+                print(self.get_coords())
+        pygame.display.flip()
+        clock.tick(7)
+
+
+class Player(pygame.sprite.Sprite):
+    BIG_IMAGE: pygame.Surface
+    CHAR: str
+    NAME: str
+    unlocked = False
+
+    def __init__(self, side=[1, 0]):
+        super().__init__()
+        self.max_hp = 1
+        self.current_hp = 1
+        self.dmg = 1
+        self.armor = 1
+        self.attack_speed_per_second = 1
+        self.side = side
+
+        # 1 - игрок может атаковать поле, 0 - не может
+        # Игрок находится в центре, смотрит вправо
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 0),
+                                       (0, 0, 0)), dtype=bool)
+
+        self.last_attack_time = time.time()
+        frames_num = len(os.listdir(os.path.join('data', self.NAME))) // 3
+        self.frames_x = tuple(transform.scale(load_image(f'{self.NAME}/{i}.png'), Board.CELL_SIZE)
+                              for i in range(frames_num))
+
+        # Если число в названии изображения - положительное, персонаж смотрит в экран, от экрана если отрицательное
+        # Название изображения начинается с "1" или "-1"
+        frames_y = [[], []]
+        for i in range(frames_num):
+            frames_y[0].append(transform.scale(load_image(f'{self.NAME}/{10 + i}.png'), Board.CELL_SIZE))
+            frames_y[1].append(transform.scale(load_image(f'{self.NAME}/{-10 - i}.png'), Board.CELL_SIZE))
+        self.frames_y = (tuple(frames_y[0]), tuple(frames_y[1]))
+        self.current_frames = self.frames_x
+        self.image = transform.flip(self.current_frames[0],
+                                    True, False) if self.side[0] == -1 else self.current_frames[0]
+        self.rect = pygame.rect.Rect((0, 0, 70, 70))
+
+    def get_coords(self) -> (int, int):
+        return self.rect.x // Board.CELL_SIZE[0], self.rect.y // Board.CELL_SIZE[1]
+
+    def set_coords(self, x: int, y: int):
+        self.rect.x = x * Board.CELL_SIZE[0]
+        self.rect.y = y * Board.CELL_SIZE[1]
+
+    def set_side(self, side_x: int, side_y: int):
+        if side_y:
+            self.side[0] = 0
+            self.current_frames = self.frames_y[0 if side_y == 1 else 1]
+            self.image = self.current_frames[0]
+        elif side_x:
+            self.side[0] = side_x
+            self.current_frames = self.frames_x
+            self.image = self.current_frames[0] if self.side[0] == 1 else transform.flip(
+                self.current_frames[0], True, False)
+        self.side[1] = side_y
+
+    # Двигает персонажа на заданное число клеток, при необходимости меняя изображение
+    def move(self, x: int, y: int):
+        self.rect.move_ip(x * Board.CELL_SIZE[0], y * Board.CELL_SIZE[1])
+        self.set_side(x, y)
+
+    def attack(self):
+        # Ограничивает скорость атаки игрока
+        if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
+            return
+
+        for i in range(len(self.frames_x)):
+            if self.side[1] == 0:
+                self.image = transform.flip(
+                    self.current_frames[i], True, False) if self.side[0] == -1 else self.current_frames[i]
+            else:
+                self.image = self.current_frames[i]
+            update_screen()
+            clock.tick(10)
+        self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
+                      else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
+        self.last_attack_time = time.time()
+        self.show_attacked_cells()
+
+    def transpose_attack_array(self, side=[0, 0]) -> np.array:
+        # Поворачивает массив атакуемых клеток в зависсимости от направления существа
+        if side == [0, 0]:
+            side = self.side
+        attacked_zone = self.attacked_zone
+        if side[1] == -1:
+            attacked_zone = np.rot90(attacked_zone, k=1)
+        elif side[1] == 1:
+            attacked_zone = np.rot90(attacked_zone, k=3)
+        elif side[0] == -1:
+            attacked_zone = attacked_zone[::, ::-1]
+        return np.transpose(np.nonzero(attacked_zone))
+
+    def show_attacked_cells(self):
+        p_coords = board.current_level.get_coords(self.CHAR)
+        for y, x in self.transpose_attack_array():
+            a_x, a_y = p_coords[0] + x - 1, p_coords[1] + y - 1
+            if board.current_level.get_cell(a_x, a_y) in self.ATTACKED_CHARS:
+                r = pygame.Surface(Board.CELL_SIZE)
+                r.set_alpha(35)
+                r.fill(self.ATTACK_COLOR)
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
         pygame.display.flip()
-        clock = pygame.time.Clock()
         clock.tick(7)
+
+
+class Goblin(Entity):
+    BIG_IMAGE = load_image('goblin/0.png')
+    CHAR = 'G'
+    NAME = 'goblin'
+    ATTACK_COLOR = 'green'
+    STEP_DELAY = .35  # Время между шагоми
+    ATTACKED_CHARS = '0SAKG'
+
+    def __init__(self, x=0, y=0):
+        super().__init__(side=[-1, 0])
+        self.hp = 115
+        self.dmg = 35
+        self.armor = 15
+        self.attack_speed_per_second = 4.0
+        self.attacked_zone = np.array(((0, 0, 0),
+                                       (0, 0, 1),
+                                       (0, 0, 1)), dtype=bool)
+        self.set_coords(x, y)
+        self.last_step_time = time.time()
+        self.coins = random.randint(1, 4)
+
+    def get_next_step_coords(self) -> (int, int):
+        # Поворачивает гоблина, если игрока можно атаковать
+        c_x, c_y = self.get_coords()
+        taa = self.transpose_attack_array
+        for arr in (taa(side=[-1, 0]), taa(side=[1, 0]), taa(side=[0, -1]), taa(side=[0, 1])):
+            for x, y in arr - 1:
+                if board.current_level.field[y + c_y][x + c_x] == board.current_player.CHAR:
+                    if x == 1 and y == 1:
+                        self.set_side(1, 0)
+                    else:
+                        self.set_side(x, y)
+                    return
+
+        # Находит способ добраться до игрока и возвращает координаты для следующего шага
+        level_field = [[0 if x == '0' else 1 for x in y][1:11] for y in board.current_level.field][1:10]
+        new_field = [[0 for _ in range(1, 11)] for _ in range(1, 10)]
+        start, finish = self.get_coords(), board.current_player.get_coords()
+        new_field[start[1] - 1][start[0] - 1] = 1
+        level_field[finish[1] - 1][finish[0] - 1] = 0
+        n = 1
+        while new_field[finish[1] - 1][finish[0] - 1] == 0 and n < 30:
+            for y in range(len(new_field)):
+                for x in range(len(new_field[y])):
+                    if new_field[y][x] == n:
+                        if y and new_field[y - 1][x] == level_field[y - 1][x] == 0:
+                            new_field[y - 1][x] = n + 1
+                        if x and new_field[y][x - 1] == level_field[y][x - 1] == 0:
+                            new_field[y][x - 1] = n + 1
+                        if y < len(new_field) - 1 and new_field[y + 1][x] == level_field[y + 1][x] == 0:
+                            new_field[y + 1][x] = n + 1
+                        if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y][x + 1] == 0:
+                            new_field[y][x + 1] = n + 1
+            n += 1
+        x, y = finish[0] - 1, finish[1] - 1,
+        path = []
+        while n > 1:
+            if y > 0 and new_field[y - 1][x] == n - 1:
+                y, x = y - 1, x
+                path.append((y, x))
+                n -= 1
+            elif x > 0 and new_field[y][x - 1] == n - 1:
+                y, x = y, x - 1
+                path.append((y, x))
+                n -= 1
+            elif y < len(new_field) - 1 and new_field[y + 1][x] == n - 1:
+                y, x = y + 1, x
+                path.append((y, x))
+                n -= 1
+            elif x < len(new_field[y]) - 1 and new_field[y][x + 1] == n - 1:
+                y, x = y, x + 1
+                path.append((y, x))
+                n -= 1
+        return path[-2] if len(path) > 1 else None
+
+    def step_to_player(self):
+        if time.time() - self.last_step_time <= self.STEP_DELAY:
+            return
+        if path := self.get_next_step_coords():
+            next_y, next_x = path
+        else:
+            self.attack()
+            return
+        delta_x, delta_y = self.get_coords()[0] - next_x - 1, self.get_coords()[1] - next_y - 1
+        board.current_level.move_entity(-delta_x, -delta_y, self)
+        self.last_step_time = time.time()
+
+
+class Player(Entity):
+    ATTACK_COLOR = 'red'
+    ATTACKED_CHARS = '0G'
+    unlocked = False
+
+    def __init__(self, side=[1, 0]):
+        super().__init__(side=side)
 
 
 class PlayerSword(Player):
@@ -181,7 +389,7 @@ class PlayerSword(Player):
     unlocked = True
 
     def __init__(self):
-        super().__init__()
+        super().__init__(side=[-1, 0])
         self.max_hp = 100
         self.current_hp = 100
         self.dmg = 20
@@ -390,6 +598,9 @@ class Board:
                     images.append('floor')
                 elif char == '1':
                     images.append('wall')
+                elif char == Goblin.CHAR:
+                    images.append('floor')
+                    images.append('goblin')
                 elif char == PlayerSword.CHAR:
                     images.append('floor')
                     images.append('sword')
@@ -425,6 +636,8 @@ class Board:
         self.current_level.field[p_y][p_x] = '0'
         self.current_level = next_level
         self.draw_level()
+        if self.current_level == self.levels[0]:
+            revive_hp()
 
     def draw_image(self, obj: str, x: int, y: int):
         img: pygame.Surface
@@ -441,7 +654,12 @@ class Board:
         elif obj == 'shop':
             img = transform.scale(level.shop_image, size)
         else:
-            self.players[obj].set_coords(x, y)
+            if obj == Goblin.NAME:
+                self.current_level.goblins.draw(screen)
+                pass
+            else:
+                self.players[obj].set_coords(x, y)
+                self.current_level.goblins.draw(screen)
             return
         screen.blit(img, (x * size[0], y * size[1]))
 
@@ -483,12 +701,12 @@ class Board:
                     if ctrl_pressed:
                         self.current_player.set_side(dir_x, dir_y)
                     else:
-                        self.current_level.move_player(dir_x, dir_y, self.current_player)
+                        self.current_level.move_entity(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
+            for g in self.current_level.goblins:
+                g.step_to_player()
             update_screen()
-            if self.current_level == self.levels[0]:
-                revive_hp()
 
 
 class Level:
@@ -498,13 +716,21 @@ class Level:
         self.door1_image = load_image('door.png')
         self.door2_image = load_image('door2.png')
         self.shop_image = load_image('shop.png', colorkey=-1)
-        with open('data/levels/' + f'{num}.txt') as mapFile:
-            level_map = [line.strip() for line in mapFile]
+        level_map = [line.strip() for line in open(f'data/levels/{num}.txt')]
         max_width = max(map(len, level_map))
         self.field = list(map(lambda x: list(x.ljust(max_width, '.')), level_map))
+        self.goblins = pygame.sprite.Group()
+        for y in range(len(self.field)):
+            for x in range(len(self.field)):
+                if self.field[y][x] == Goblin.CHAR:
+                    goblin = Goblin(x, y)
+                    self.goblins.add(goblin)
 
     def get_field(self):
         return self.field
+
+    def get_goblin(self, x, y):
+        return [goblin for goblin in self.goblins if goblin.get_coords() == (x, y)][0]
 
     def get_coords(self, elem: str) -> (int, int):
         for y, s in enumerate(self.field):
@@ -515,22 +741,22 @@ class Level:
     def get_cell(self, x: int, y: int) -> str:
         return self.field[y][x]
 
-    def move_player(self, dir_x: int, dir_y: int, player: Player):
-        char = player.CHAR
-        x, y = player.get_coords()
+    def move_entity(self, dir_x: int, dir_y: int, entity: Entity):
+        char = entity.CHAR
+        x, y = entity.get_coords()
         if dir_y:
             if self.field[y + dir_y][x] == '0':
                 self.field[y][x], self.field[y + dir_y][x] = '0', char
-                player.move(0, dir_y)
+                entity.move(0, dir_y)
             else:
-                player.set_side(1, dir_y)
+                entity.set_side(1, dir_y)
         elif dir_x:
             if self.field[y][x + dir_x] == '0':
                 s = self.field[y]
                 s[x + dir_x], s[x] = char, '0'
-                player.move(dir_x, 0)
+                entity.move(dir_x, 0)
             else:
-                player.set_side(dir_x, 0)
+                entity.set_side(dir_x, 0)
 
     def action(self, player: Player):
         side_x, side_y = player.side
@@ -610,10 +836,9 @@ class Level:
 
 
 sword, axe, kope = PlayerSword(), PlayerAxe(), PlayerKope()
-all_sprites = pygame.sprite.Group()
-all_sprites.add(sword, axe, kope)
+all_sprites = pygame.sprite.Group(sword, axe, kope)
+clock = pygame.time.Clock()
 board = Board()
 fon_sound.play(-1)
 shop = Shop()
 board.show_start_screen()
-revive_hp()
