@@ -127,19 +127,20 @@ class Entity(pygame.sprite.Sprite):
         self.last_attack_time = time.time()
         self.show_attacked_cells()
 
+    def transpose_attack_array(self) -> np.array:
+        # Поворачивает массив атакуемых клеток в зависсимости от направления существа
+        attacked_zone = self.attacked_zone
+        if self.side[1] == -1:
+            attacked_zone = np.rot90(attacked_zone, k=1)
+        elif self.side[1] == 1:
+            attacked_zone = np.rot90(attacked_zone, k=3)
+        elif self.side[0] == -1:
+            attacked_zone = attacked_zone[::, ::-1]
+        return np.transpose(np.nonzero(attacked_zone))
+
     def show_attacked_cells(self):
         p_coords = board.current_level.get_coords(self.CHAR)
-
-        # Поворачивает массив атакуемых клеток в зависсимости от направления игрока
-        rotation_num = 0
-        if self.side[1] == -1:
-            rotation_num = 1
-        elif self.side[1] == 1:
-            rotation_num = 3
-        elif self.side[0] == -1:
-            rotation_num = 2
-
-        for x in np.transpose(np.nonzero(np.rot90(self.attacked_zone, k=rotation_num))):
+        for x in self.transpose_attack_array():
             a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
             if board.current_level.get_cell(a_x, a_y) in '0G':
                 r = pygame.Surface(Board.CELL_SIZE)
@@ -157,6 +158,7 @@ class Goblin(Entity):
     CHAR = 'G'
     NAME = 'goblin'
     ATTACK_COLOR = 'green'
+    STEP_DELAY = .3  # Время между шагоми
 
     def __init__(self, x=0, y=0):
         super().__init__(side=[-1, 0])
@@ -168,6 +170,91 @@ class Goblin(Entity):
                                        (0, 0, 1),
                                        (0, 0, 1)), dtype=bool)
         self.set_coords(x, y)
+        self.last_step_time = time.time()
+
+    def get_next_step_coords(self) -> (int, int):
+        import pprint
+        # Находит способ добраться до игрока и возвращает координаты для следующего шага
+        level_field = [[0 if x == '0' else 1 for x in y][1:11] for y in board.current_level.field][1:10]
+        new_field = [[0 for _ in range(1, 11)] for _ in range(1, 10)]
+        start, finish = self.get_coords(), board.current_player.get_coords()
+        new_field[start[1] - 1][start[0] - 1] = 1
+        level_field[finish[1] - 1][finish[0] - 1] = 0
+        '''pprint.pprint(board.current_level.field)
+        pprint.pprint(level_field)
+        pprint.pprint(new_field)'''
+        n = 1
+        while new_field[finish[1] - 1][finish[0] - 1] == 0 and n < 99:
+            for y in range(len(new_field)):
+                for x in range(len(new_field[y])):
+                    if new_field[y][x] == n:
+                        '''if y and new_field[y - 1][x] == level_field[y][x + 1] == 0:
+                            new_field[y - 1][x] = n + 1
+                        if x and new_field[y][x - 1] == level_field[y + 1][x] == 0:
+                            new_field[y][x - 1] = n + 1
+                        try:
+                            if y < len(new_field) - 1 and new_field[y + 1][x] == level_field[y + 2][x + 1] == 0:
+                                new_field[y + 1][x] = n + 1
+                        except:
+                            import pprint
+                            pprint.pprint(level_field)
+                            print('err0', x, y)
+                        try:
+                            if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y + 1][x + 2] == 0:
+                                new_field[y][x + 1] = n + 1
+                        except:
+                            import pprint
+                            pprint.pprint(level_field)
+                            print('err1', x, y)
+                        '''
+                        if y and new_field[y - 1][x] == level_field[y - 1][x] == 0:
+                            new_field[y - 1][x] = n + 1
+                        if x and new_field[y][x - 1] == level_field[y][x - 1] == 0:
+                            new_field[y][x - 1] = n + 1
+                        #try:
+                        if y < len(new_field) - 1 and new_field[y + 1][x] == level_field[y + 1][x] == 0:
+                            new_field[y + 1][x] = n + 1
+                        '''except:
+                            import pprint
+                            pprint.pprint(level_field)
+                            print(x, y)'''
+                        if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y][x + 1] == 0:
+                            new_field[y][x + 1] = n + 1
+            n += 1
+        x, y = finish[0] - 1, finish[1] - 1,
+        path = []
+        while n > 1:
+            if y > 0 and new_field[y - 1][x] == n - 1:
+                y, x = y - 1, x
+                path.append((y, x))
+                n -= 1
+            elif x > 0 and new_field[y][x - 1] == n - 1:
+                y, x = y, x - 1
+                path.append((y, x))
+                n -= 1
+            elif y < len(new_field) - 1 and new_field[y + 1][x] == n - 1:
+                y, x = y + 1, x
+                path.append((y, x))
+                n -= 1
+            elif x < len(new_field[y]) - 1 and new_field[y][x + 1] == n - 1:
+                y, x = y, x + 1
+                path.append((y, x))
+                n -= 1
+        return path[-2] if len(path) > 1 else None
+
+    def step_to_player(self):
+        if time.time() - self.last_step_time <= self.STEP_DELAY:
+            return
+        if path := self.get_next_step_coords():
+            next_y, next_x = path
+        else:
+            self.attack()
+            return
+        delta_x, delta_y = self.get_coords()[0] - next_x - 1, self.get_coords()[1] - next_y - 1
+        board.current_level.move_entity(-delta_x, -delta_y, self)
+        self.last_step_time = time.time()
+        print(next_x, next_y)
+        print(delta_x, delta_y)
 
 
 class Player(Entity):
@@ -475,6 +562,8 @@ class Board:
                         self.current_level.move_entity(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
                         self.current_level.action(self.current_player)
+            for g in self.current_level.goblins:
+                g.step_to_player()
             update_screen()
 
 
