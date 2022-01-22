@@ -173,7 +173,6 @@ class Entity(pygame.sprite.Sprite):
                 r.fill(self.ATTACK_COLOR)
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
-                print(self.get_coords())
         pygame.display.flip()
         clock.tick(7)
 
