@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pygame
 from pygame import draw, transform
+import random
 
 width, height = 840, 770
 pygame.init()
@@ -52,6 +53,7 @@ class Entity(pygame.sprite.Sprite):
     CHAR = ''
     NAME = ''
     ATTACK_COLOR = ''
+    ATTACKED_CHARS = ''  # Клетки, которые подсвечиваются и получают урон при атаке
 
     def __init__(self, side=[1, 0]):
         super().__init__()
@@ -113,7 +115,6 @@ class Entity(pygame.sprite.Sprite):
         if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
 
-        clock = pygame.time.Clock()
         for i in range(len(self.frames_x)):
             if self.side[1] == 0:
                 self.image = transform.flip(
@@ -127,29 +128,31 @@ class Entity(pygame.sprite.Sprite):
         self.last_attack_time = time.time()
         self.show_attacked_cells()
 
-    def transpose_attack_array(self) -> np.array:
+    def transpose_attack_array(self, side=[0, 0]) -> np.array:
         # Поворачивает массив атакуемых клеток в зависсимости от направления существа
+        if side == [0, 0]:
+            side = self.side
         attacked_zone = self.attacked_zone
-        if self.side[1] == -1:
+        if side[1] == -1:
             attacked_zone = np.rot90(attacked_zone, k=1)
-        elif self.side[1] == 1:
+        elif side[1] == 1:
             attacked_zone = np.rot90(attacked_zone, k=3)
-        elif self.side[0] == -1:
+        elif side[0] == -1:
             attacked_zone = attacked_zone[::, ::-1]
         return np.transpose(np.nonzero(attacked_zone))
 
     def show_attacked_cells(self):
         p_coords = board.current_level.get_coords(self.CHAR)
-        for x in self.transpose_attack_array():
-            a_x, a_y = p_coords[0] + x[1] - 1, p_coords[1] + x[0] - 1
-            if board.current_level.get_cell(a_x, a_y) in '0G':
+        for y, x in self.transpose_attack_array():
+            a_x, a_y = p_coords[0] + x - 1, p_coords[1] + y - 1
+            if board.current_level.get_cell(a_x, a_y) in self.ATTACKED_CHARS:
                 r = pygame.Surface(Board.CELL_SIZE)
                 r.set_alpha(35)
                 r.fill(self.ATTACK_COLOR)
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
+                print(self.get_coords())
         pygame.display.flip()
-        clock = pygame.time.Clock()
         clock.tick(7)
 
 
@@ -158,7 +161,8 @@ class Goblin(Entity):
     CHAR = 'G'
     NAME = 'goblin'
     ATTACK_COLOR = 'green'
-    STEP_DELAY = .3  # Время между шагоми
+    STEP_DELAY = .35  # Время между шагоми
+    ATTACKED_CHARS = '0SAKG'
 
     def __init__(self, x=0, y=0):
         super().__init__(side=[-1, 0])
@@ -171,53 +175,38 @@ class Goblin(Entity):
                                        (0, 0, 1)), dtype=bool)
         self.set_coords(x, y)
         self.last_step_time = time.time()
+        self.coins = random.randint(1, 4)
 
     def get_next_step_coords(self) -> (int, int):
-        import pprint
+        # Поворачивает гоблина, если игрока можно атаковать
+        c_x, c_y = self.get_coords()
+        taa = self.transpose_attack_array
+        for arr in (taa(side=[-1, 0]), taa(side=[1, 0]), taa(side=[0, -1]), taa(side=[0, 1])):
+            for x, y in arr - 1:
+                if board.current_level.field[y + c_y][x + c_x] == board.current_player.CHAR:
+                    if x == 1 and y == 1:
+                        self.set_side(1, 0)
+                    else:
+                        self.set_side(x, y)
+                    return
+
         # Находит способ добраться до игрока и возвращает координаты для следующего шага
         level_field = [[0 if x == '0' else 1 for x in y][1:11] for y in board.current_level.field][1:10]
         new_field = [[0 for _ in range(1, 11)] for _ in range(1, 10)]
         start, finish = self.get_coords(), board.current_player.get_coords()
         new_field[start[1] - 1][start[0] - 1] = 1
         level_field[finish[1] - 1][finish[0] - 1] = 0
-        '''pprint.pprint(board.current_level.field)
-        pprint.pprint(level_field)
-        pprint.pprint(new_field)'''
         n = 1
-        while new_field[finish[1] - 1][finish[0] - 1] == 0 and n < 99:
+        while new_field[finish[1] - 1][finish[0] - 1] == 0 and n < 30:
             for y in range(len(new_field)):
                 for x in range(len(new_field[y])):
                     if new_field[y][x] == n:
-                        '''if y and new_field[y - 1][x] == level_field[y][x + 1] == 0:
-                            new_field[y - 1][x] = n + 1
-                        if x and new_field[y][x - 1] == level_field[y + 1][x] == 0:
-                            new_field[y][x - 1] = n + 1
-                        try:
-                            if y < len(new_field) - 1 and new_field[y + 1][x] == level_field[y + 2][x + 1] == 0:
-                                new_field[y + 1][x] = n + 1
-                        except:
-                            import pprint
-                            pprint.pprint(level_field)
-                            print('err0', x, y)
-                        try:
-                            if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y + 1][x + 2] == 0:
-                                new_field[y][x + 1] = n + 1
-                        except:
-                            import pprint
-                            pprint.pprint(level_field)
-                            print('err1', x, y)
-                        '''
                         if y and new_field[y - 1][x] == level_field[y - 1][x] == 0:
                             new_field[y - 1][x] = n + 1
                         if x and new_field[y][x - 1] == level_field[y][x - 1] == 0:
                             new_field[y][x - 1] = n + 1
-                        #try:
                         if y < len(new_field) - 1 and new_field[y + 1][x] == level_field[y + 1][x] == 0:
                             new_field[y + 1][x] = n + 1
-                        '''except:
-                            import pprint
-                            pprint.pprint(level_field)
-                            print(x, y)'''
                         if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y][x + 1] == 0:
                             new_field[y][x + 1] = n + 1
             n += 1
@@ -253,12 +242,11 @@ class Goblin(Entity):
         delta_x, delta_y = self.get_coords()[0] - next_x - 1, self.get_coords()[1] - next_y - 1
         board.current_level.move_entity(-delta_x, -delta_y, self)
         self.last_step_time = time.time()
-        print(next_x, next_y)
-        print(delta_x, delta_y)
 
 
 class Player(Entity):
     ATTACK_COLOR = 'red'
+    ATTACKED_CHARS = '0G'
     unlocked = False
 
     def __init__(self, side=[1, 0]):
@@ -683,6 +671,7 @@ class Level:
 
 sword, axe, kope = PlayerSword(), PlayerAxe(), PlayerKope()
 all_sprites = pygame.sprite.Group(sword, axe, kope)
+clock = pygame.time.Clock()
 board = Board()
 shop = Shop()
 board.show_start_screen()
