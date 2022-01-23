@@ -14,7 +14,7 @@ screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
 screen.fill('black')
 
 fon_sound = pygame.mixer.Sound("data/fon_sound.mp3")
-attack_sound = pygame.mixer.Sound("data/sword_sound (mp3cut.net).mp3")
+attack_sound = pygame.mixer.Sound("data/sword_sound.mp3")
 coin_sound = pygame.mixer.Sound("data/coin_sound.mp3")
 fon_sound.set_volume(0.3)
 coin_sound.set_volume(1.0)
@@ -49,7 +49,7 @@ def terminate():
     for x in board.players:
         p: Player = board.players[x]
         cur.execute("UPDATE Knights SET current_hp=?, max_hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
-                    (p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
+                    (p.max_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
     cur.execute("UPDATE Player SET coins=?, current_player=?", (shop.coins, board.current_player.NAME))
     con.commit()
     pygame.quit()
@@ -154,7 +154,6 @@ class Entity(pygame.sprite.Sprite):
         self.last_attack_time = time.time()
         self.show_attacked_cells()
 
-
     def transpose_attack_array(self, side=[0, 0]) -> np.array:
         # Поворачивает массив атакуемых клеток в зависсимости от направления существа
         if side == [0, 0]:
@@ -178,25 +177,12 @@ class Entity(pygame.sprite.Sprite):
                 r.fill(self.ATTACK_COLOR)
                 screen.blit(r, (a_x * Board.CELL_SIZE[0], a_y * Board.CELL_SIZE[1],
                                 *Board.CELL_SIZE))
-                if entity := board.current_level.get_entity(a_x, a_y):
-                    print(a_x,a_y,entity)
+                entity = board.current_level.get_entity(a_x, a_y)
+                if entity:
                     entity.take_damage(self.dmg)
 
         pygame.display.flip()
         #clock.tick(7)
-
-
-class Player(pygame.sprite.Sprite):
-    BIG_IMAGE: pygame.Surface
-    CHAR: str
-    NAME: str
-    unlocked = False
-
-    def __init__(self, side=[1, 0]):
-        super().__init__(side)
-
-    def die(self):
-        board.change_level(0, 2)
 
 
 class Goblin(Entity):
@@ -212,7 +198,7 @@ class Goblin(Entity):
         self.max_hp = 115
         self.current_hp = 115
         self.dmg = 15
-        self.armor = 15
+        self.armor = 5
         self.attack_speed_per_second = 4.0
         self.attacked_zone = np.array(((0, 0, 0),
                                        (0, 0, 1),
@@ -306,7 +292,7 @@ class Player(Entity):
     def die(self):
         shop.coins /= 2
         board.init_levels()
-        board.change_level(0, 3)
+        self.revive_hp()
 
 
 class PlayerSword(Player):
@@ -563,8 +549,8 @@ class Board:
             n_y, n_x = 6, 10
         if next_level_num == 0:
             board.current_player.revive_hp()
-        next_level = board.levels[next_level_num]
-        p_x, p_y = board.current_player.get_coords()
+        next_level = self.levels[next_level_num]
+        p_x, p_y = self.current_player.get_coords()
         next_level.field[n_y][n_x] = board.current_player.CHAR
         self.current_level.field[p_y][p_x] = '0'
         self.current_level = next_level
