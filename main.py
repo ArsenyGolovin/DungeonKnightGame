@@ -152,7 +152,7 @@ class Entity(pygame.sprite.Sprite):
         self.image = (transform.flip(self.current_frames[0], True, False) if self.side[0] == -1
                       else self.current_frames[0]) if self.side[1] == 0 else self.current_frames[0]
         self.last_attack_time = time.time()
-        self.show_attacked_cells()
+        self.damage_and_show_attacked_cells()
 
     def transpose_attack_array(self, side=[0, 0]) -> np.array:
         # Поворачивает массив атакуемых клеток в зависсимости от направления существа
@@ -167,12 +167,14 @@ class Entity(pygame.sprite.Sprite):
             attacked_zone = attacked_zone[::, ::-1]
         return np.transpose(np.nonzero(attacked_zone))
 
-    def show_attacked_cells(self):
-        p_coords = board.current_level.get_coords(self.CHAR)
+    def damage_and_show_attacked_cells(self):
+        p_coords = self.get_coords()
         if not p_coords:
             return
         for y, x in self.transpose_attack_array():
+            from icecream import ic
             a_x, a_y = p_coords[0] + x - 1, p_coords[1] + y - 1
+            ic(self.get_coords(), p_coords, a_x, a_y)
             if board.current_level.get_cell(a_x, a_y) in self.ATTACKED_CHARS:
                 r = pygame.Surface(Board.CELL_SIZE)
                 r.set_alpha(35)
