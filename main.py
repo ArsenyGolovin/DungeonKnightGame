@@ -1,4 +1,5 @@
 import os
+import random
 import sqlite3
 import sys
 import time
@@ -6,7 +7,6 @@ import time
 import numpy as np
 import pygame
 from pygame import draw, transform
-import random
 
 width, height = 840, 770
 pygame.init()
@@ -169,6 +169,8 @@ class Entity(pygame.sprite.Sprite):
 
     def show_attacked_cells(self):
         p_coords = board.current_level.get_coords(self.CHAR)
+        if not p_coords:
+            return
         for y, x in self.transpose_attack_array():
             a_x, a_y = p_coords[0] + x - 1, p_coords[1] + y - 1
             if board.current_level.get_cell(a_x, a_y) in self.ATTACKED_CHARS:
@@ -180,9 +182,7 @@ class Entity(pygame.sprite.Sprite):
                 entity = board.current_level.get_entity(a_x, a_y)
                 if entity:
                     entity.take_damage(self.dmg)
-
         pygame.display.flip()
-        #clock.tick(7)
 
 
 class Goblin(Entity):
@@ -275,6 +275,8 @@ class Goblin(Entity):
 
     def die(self):
         shop.coins += self.coins
+        x, y = self.get_coords()
+        board.current_level.field[y][x] = '0'
         self.kill()
 
 
@@ -290,8 +292,9 @@ class Player(Entity):
         self.current_hp = self.max_hp
 
     def die(self):
-        shop.coins /= 2
+        shop.coins //= 2
         board.init_levels()
+        all_sprites.add(axe, kope)
         self.revive_hp()
 
 
