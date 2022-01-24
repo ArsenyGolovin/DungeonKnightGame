@@ -305,7 +305,7 @@ class Player(Entity):
     def die(self):
         shop.coins //= 2
         board.init_levels()
-        board.show_die_screen()
+        board.show_death_screen()
         all_sprites.add(axe, kope)
         self.revive_hp()
 
@@ -520,21 +520,24 @@ class Board:
                     running = False
         self.mainloop()
 
-    def show_die_screen(self):
+    def show_death_screen(self):
         self.load_db_info()
-        text = "           YOU DIE"
         screen.fill('black')
-        font = pygame.font.Font('data/ebrima.ttf', 60)
-        string_rendered = font.render(text, True, pygame.Color('red'))
-        screen.blit(string_rendered, (120, 300))
+        font1 = pygame.font.Font('data/ebrima.ttf', 60)
+        font2 = pygame.font.Font('data/ebrima.ttf', 35)
+        death_text = font1.render("YOU DIED", True, pygame.Color('red'))
+        death_text_rect = death_text.get_rect(center=(400, 320))
+        press_space_text = font2.render("Press SPACE to continue", True, pygame.Color('red'))
+        press_space_text_rect = press_space_text.get_rect(center=(400, 450))
+        screen.blit(death_text, death_text_rect)
+        screen.blit(press_space_text, press_space_text_rect)
         pygame.display.flip()
-        running = True
-        while running:
+        while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     terminate()
-                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                    running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                    return
 
     def draw_level(self):
         field = self.current_level.get_field()
@@ -759,8 +762,7 @@ class Level:
 
     @staticmethod
     def open_shop(player: Player):
-        running = True
-        while running:
+        while True:
             screen.fill('black')
             shop.draw(player)
             for event in pygame.event.get():
@@ -769,7 +771,7 @@ class Level:
                     terminate()
                 if event_type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running = False
+                        return
                     if event.key == pygame.K_q:
                         if board.flag_sound is True:
                             coin_sound.set_volume(0.0)
