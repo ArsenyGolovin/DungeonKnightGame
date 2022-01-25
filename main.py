@@ -16,9 +16,12 @@ screen.fill('black')
 fon_sound = pygame.mixer.Sound("data/fon_sound.mp3")
 attack_sound = pygame.mixer.Sound("data/sword_sound.mp3")
 coin_sound = pygame.mixer.Sound("data/coin_sound.mp3")
+won_sound = pygame.mixer.Sound("data/won_sound.mp3")
+
 fon_sound.set_volume(0.3)
 coin_sound.set_volume(1.0)
 attack_sound.set_volume(1.0)
+won_sound.set_volume(1.0)
 
 con = sqlite3.connect("data/dungeon_knight.db")
 cur = con.cursor()
@@ -607,7 +610,15 @@ class Board:
         won_text = font2.render("YOU WON!", True, pygame.Color('orange'))
         won_text_rect = won_text.get_rect(center=(400, 500))
         screen.blit(won_text, won_text_rect)
+        coin_sound.set_volume(0.0)
+        attack_sound.set_volume(0.0)
+        fon_sound.set_volume(0.0)
+        won_sound.play(0)
         pygame.display.flip()
+        pygame.time.delay(6000)
+        coin_sound.set_volume(1.0)
+        attack_sound.set_volume(1.0)
+        fon_sound.set_volume(0.4)
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
