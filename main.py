@@ -50,7 +50,7 @@ def terminate():
     for x in board.players:
         p: Player = board.players[x]
         cur.execute("UPDATE Knights SET hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
-                    (p.max_hp, p.dmg, p.armor, p.attacks_num_per_second, p.unlocked, x))
+                    (p.max_hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
     cur.execute("UPDATE Player SET coins=?, current_player=?", (shop.coins, board.current_player.NAME))
     con.commit()
     pygame.quit()
@@ -90,7 +90,7 @@ class Entity(pygame.sprite.Sprite):
         self.current_hp = 1
         self.dmg = 1
         self.armor = 1
-        self.attacks_num_per_second = 1
+        self.attack_speed_per_second = 1
         self.side = side
 
         # 1 - игрок может атаковать поле, 0 - не может
@@ -149,9 +149,8 @@ class Entity(pygame.sprite.Sprite):
 
     def attack(self):
         # Ограничивает скорость атаки игрока
-        if self.last_attack_time + 1 / self.attacks_num_per_second > time.time():
+        if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
             return
-
         attack_sound.play()
         for i in range(len(self.frames_x)):
             if self.side[1] == 0:
@@ -257,7 +256,7 @@ class Goblin(Entity):
                             new_field[y][x + 1] = n + 1
             n += 1
             if n == 30:
-                return
+                return False
         x, y = finish[0] - 1, finish[1] - 1,
         path = []
         while n > 1:
@@ -284,12 +283,15 @@ class Goblin(Entity):
             return
         if path := self.get_next_step_coords():
             next_y, next_x = path
+        elif path is False:
+            return
         else:
             self.attack()
             return
         delta_x, delta_y = self.get_coords()[0] - next_x - 1, self.get_coords()[1] - next_y - 1
         board.current_level.move_entity(-delta_x, -delta_y, self)
         self.last_step_time = time.time()
+        return
 
     def die(self):
         shop.coins += self.coins
@@ -300,7 +302,6 @@ class Goblin(Entity):
 
 class Ghost(Entity):
     NAME = 'ghost'
-    ATTACK_COLOR = 'white'
     ATTACKED_CHARS = '0SAK'
 
     def __init__(self, x, y):
@@ -309,9 +310,6 @@ class Ghost(Entity):
         self.current_hp = 35
         self.dmg = 1
         self.coins = random.randint(25, 40)
-        self.attacked_zone = np.array([[0, 0, 0],
-                                       [0, 1, 0],
-                                       [0, 0, 0]])
         self.side = [0, 0]
         x2, y2 = random.randint(1, 10), random.randint(1, 9)
         while x2 == x or y2 == y:
@@ -345,7 +343,7 @@ class Ghost(Entity):
 
 class Player(Entity):
     ATTACK_COLOR = 'red'
-    ATTACKED_CHARS = '0GO'
+    ATTACKED_CHARS = '0G'
     unlocked = False
 
     def __init__(self, side=[1, 0]):
@@ -374,7 +372,7 @@ class PlayerSword(Player):
         self.current_hp = 100
         self.dmg = 20
         self.armor = 10
-        self.attack_speed_per_second = 4.0
+        self.attack_speed_per_second = 2
         self.attacked_zone = np.array(((0, 0, 1),
                                        (0, 0, 1),
                                        (0, 0, 1)), dtype=bool)
@@ -391,7 +389,7 @@ class PlayerAxe(Player):
         self.current_hp = 120
         self.dmg = 55
         self.armor = 25
-        self.attack_speed_per_second = 2.0
+        self.attack_speed_per_second = 1.5
         self.attacked_zone = np.array(((0, 0, 1),
                                        (0, 0, 1),
                                        (0, 0, 0)), dtype=bool)
@@ -408,7 +406,7 @@ class PlayerKope(Player):
         self.current_hp = 90
         self.dmg = 80
         self.armor = 10
-        self.attack_speed_per_second = 1.5
+        self.attack_speed_per_second = 1.0
         self.attacked_zone = np.array(((0, 0, 0),
                                        (0, 0, 1),
                                        (0, 0, 0)), dtype=bool)
@@ -457,7 +455,7 @@ class Shop:
                         self.coins -= 10
                         coin_sound.play(0)
                     elif i == 6 and self.coins >= 10:
-                        player.attacks_num_per_second = round(player.attacks_num_per_second + 0.1, 1)
+                        player.attack_speed_per_second = round(player.attack_speed_per_second + 0.1, 1)
                         self.coins -= 10
                         coin_sound.play(0)
                     con.commit()
@@ -501,7 +499,7 @@ class Shop:
         player_specifications_strings = (f'MAXIMUM HP   {player.max_hp}',
                                          f'DAMAGE   {player.dmg}',
                                          f'ARMOR  {player.armor}',
-                                         f'ATTACK SPEED  {player.attacks_num_per_second}',
+                                         f'ATTACK SPEED  {player.attack_speed_per_second}',
                                          f'COINS  {self.coins}')
         self.draw_icon(PlayerAxe.BIG_IMAGE, player_img_size,
                        (30, 100), self.kope_status, (110, 210))
@@ -523,9 +521,9 @@ class Board:
     CELL_SIZE = (70, 70)
 
     def __init__(self):
-        self.init_levels()
         self.players = {'sword': sword, 'axe': axe, 'kope': kope}
         self.current_player = self.players['sword']
+        self.init_levels()
         self.flag_sound = True
 
         # Если текущий уровень - начальный
@@ -542,6 +540,7 @@ class Board:
                 f"WHERE name = '{x[0]}'").fetchone()
             p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
                 int(hp), int(hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
+        self.current_player = self.players[cur.execute("SELECT current_player FROM Player").fetchone()[0]]
 
     def init_levels(self):
         self.levels = (Level(0), Level(1), Level(2, floor_image='floor1.jpg', ghosts_num=2),
@@ -549,6 +548,8 @@ class Board:
                        Level(4, floor_image='floor3.jpg', ghosts_num=3),
                        Level(5, floor_image='floor3.jpg', ghosts_num=4))
         self.current_level = self.levels[0]
+        all_sprites.add(sword)
+        self.current_level.swap_players(self.current_player, self.players['sword'])
 
     def show_start_screen(self):
         self.load_db_info()
@@ -691,7 +692,6 @@ class Board:
                     if event.key == pygame.K_ESCAPE:
                         terminate()
                     dir_x, dir_y = 0, 0
-                    ctrl_pressed = pygame.key.get_mods() & pygame.KMOD_CTRL
                     if event.key == pygame.K_LEFT:
                         dir_x -= 1
                     if event.key == pygame.K_RIGHT:
@@ -711,9 +711,13 @@ class Board:
                             coin_sound.set_volume(1.0)
                             attack_sound.set_volume(1.0)
                             self.flag_sound = True
-
+                    ctrl_pressed = pygame.key.get_mods() & pygame.KMOD_CTRL
                     if ctrl_pressed:
-                        self.current_player.set_side(dir_x, dir_y)
+                        shift_pressed = pygame.key.get_mods() & pygame.KMOD_SHIFT
+                        if shift_pressed and event.key == pygame.K_c:
+                            self.current_player.current_hp = 9999
+                        else:
+                            self.current_player.set_side(dir_x, dir_y)
                     else:
                         self.current_level.move_entity(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
@@ -808,10 +812,10 @@ class Level:
             self.change_player(player)
         elif target in '23':  # Дверь
             current_level_num = board.levels.index(board.current_level)
-            if side_x == 1:  # Дверь справа
+            if side_x == 1 and not self.get_coords('G'):  # Дверь справа
                 for i in all_sprites:
                     i.kill()
-                board.change_level(current_level_num + 1, int(target) + 1)
+                board.change_level(current_level_num + 1, int(target) - 1)
         else:
             player.attack()
 
