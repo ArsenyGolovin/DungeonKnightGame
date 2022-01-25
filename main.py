@@ -536,7 +536,7 @@ class Board:
         for x in cur.execute("SELECT name FROM Knights").fetchall():
             p: Player = self.players[x[0]]
             hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
-                f"SELECT current_hp, damage, armor, attack_speed, unlocked FROM Knights "
+                f"SELECT hp, damage, armor, attack_speed, unlocked FROM Knights "
                 f"WHERE name = '{x[0]}'").fetchone()
             p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
                 int(hp), int(hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
