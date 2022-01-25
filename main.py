@@ -49,8 +49,8 @@ def load_image(name, colorkey=None):
 def terminate():
     for x in board.players:
         p: Player = board.players[x]
-        cur.execute("UPDATE Knights SET current_hp=?, max_hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
-                    (p.max_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_per_second, p.unlocked, x))
+        cur.execute("UPDATE Knights SET hp=?,damage=?,armor=?,attack_speed=?,unlocked=? WHERE name=?",
+                    (p.max_hp, p.dmg, p.armor, p.attacks_num_per_second, p.unlocked, x))
     cur.execute("UPDATE Player SET coins=?, current_player=?", (shop.coins, board.current_player.NAME))
     con.commit()
     pygame.quit()
@@ -90,7 +90,7 @@ class Entity(pygame.sprite.Sprite):
         self.current_hp = 1
         self.dmg = 1
         self.armor = 1
-        self.attack_speed_per_second = 1
+        self.attacks_num_per_second = 1
         self.side = side
 
         # 1 - игрок может атаковать поле, 0 - не может
@@ -115,6 +115,7 @@ class Entity(pygame.sprite.Sprite):
         self.image = transform.flip(self.current_frames[0],
                                     True, False) if self.side[0] == -1 else self.current_frames[0]
         self.rect = pygame.rect.Rect((0, 0, 70, 70))
+        self.mask = pygame.mask.from_surface(self.image)
 
     def get_coords(self) -> (int, int):
         return self.rect.x // Board.CELL_SIZE[0], self.rect.y // Board.CELL_SIZE[1]
@@ -148,7 +149,7 @@ class Entity(pygame.sprite.Sprite):
 
     def attack(self):
         # Ограничивает скорость атаки игрока
-        if self.last_attack_time + 1 / self.attack_speed_per_second > time.time():
+        if self.last_attack_time + 1 / self.attacks_num_per_second > time.time():
             return
 
         attack_sound.play()
@@ -193,6 +194,10 @@ class Entity(pygame.sprite.Sprite):
                 entity = board.current_level.get_entity(a_x, a_y)
                 if entity:
                     entity.take_damage(self.dmg)
+                if 'O' in self.ATTACKED_CHARS:
+                    for g in board.current_level.ghosts:
+                        if (a_x, a_y) == g.get_coords():
+                            g.take_damage(self.dmg)
         pygame.display.flip()
 
 
@@ -238,7 +243,7 @@ class Goblin(Entity):
         new_field[start[1] - 1][start[0] - 1] = 1
         level_field[finish[1] - 1][finish[0] - 1] = 0
         n = 1
-        while new_field[finish[1] - 1][finish[0] - 1] == 0 and n < 30:
+        while new_field[finish[1] - 1][finish[0] - 1] == 0:
             for y in range(len(new_field)):
                 for x in range(len(new_field[y])):
                     if new_field[y][x] == n:
@@ -251,6 +256,8 @@ class Goblin(Entity):
                         if x < len(new_field[y]) - 1 and new_field[y][x + 1] == level_field[y][x + 1] == 0:
                             new_field[y][x + 1] = n + 1
             n += 1
+            if n == 30:
+                return
         x, y = finish[0] - 1, finish[1] - 1,
         path = []
         while n > 1:
@@ -291,9 +298,54 @@ class Goblin(Entity):
         self.kill()
 
 
+class Ghost(Entity):
+    NAME = 'ghost'
+    ATTACK_COLOR = 'white'
+    ATTACKED_CHARS = '0SAK'
+
+    def __init__(self, x, y):
+        super().__init__()
+        self.max_hp = 35
+        self.current_hp = 35
+        self.dmg = 1
+        self.coins = random.randint(25, 40)
+        self.attacked_zone = np.array([[0, 0, 0],
+                                       [0, 1, 0],
+                                       [0, 0, 0]])
+        self.side = [0, 0]
+        x2, y2 = random.randint(1, 10), random.randint(1, 9)
+        while x2 == x or y2 == y:
+            x2, y2 = random.randint(1, 10), random.randint(1, 9)
+        if x2 > x:
+            self.side[0] = 1
+        elif x2 < x:
+            self.side[0] = -1
+        if y2 > y:
+            self.side[1] = 1
+        elif y2 < y:
+            self.side[1] = -1
+        self.delta_x = abs(x2 - x) / abs(y2 - y)
+        self.delta_y = abs(y2 - y) / abs(x2 - x)
+        all_sprites.add(self)
+        self.set_coords(x, y)
+
+    def step(self):
+        self.rect.move_ip(self.delta_x, self.delta_y)
+        x, y = self.get_coords()
+        if x not in range(0, 11) or y not in range(0, 10):
+            self.kill()
+            return
+        if pygame.sprite.collide_mask(self, board.current_player):
+            board.current_player.take_damage(self.dmg)
+
+    def die(self):
+        shop.coins += self.coins
+        self.kill()
+
+
 class Player(Entity):
     ATTACK_COLOR = 'red'
-    ATTACKED_CHARS = '0G'
+    ATTACKED_CHARS = '0GO'
     unlocked = False
 
     def __init__(self, side=[1, 0]):
@@ -405,7 +457,7 @@ class Shop:
                         self.coins -= 10
                         coin_sound.play(0)
                     elif i == 6 and self.coins >= 10:
-                        player.attack_speed_per_second = round(player.attack_speed_per_second + 0.1, 1)
+                        player.attacks_num_per_second = round(player.attacks_num_per_second + 0.1, 1)
                         self.coins -= 10
                         coin_sound.play(0)
                     con.commit()
@@ -449,7 +501,7 @@ class Shop:
         player_specifications_strings = (f'MAXIMUM HP   {player.max_hp}',
                                          f'DAMAGE   {player.dmg}',
                                          f'ARMOR  {player.armor}',
-                                         f'ATTACK SPEED  {player.attack_speed_per_second}',
+                                         f'ATTACK SPEED  {player.attacks_num_per_second}',
                                          f'COINS  {self.coins}')
         self.draw_icon(PlayerAxe.BIG_IMAGE, player_img_size,
                        (30, 100), self.kope_status, (110, 210))
@@ -485,14 +537,17 @@ class Board:
     def load_db_info(self):
         for x in cur.execute("SELECT name FROM Knights").fetchall():
             p: Player = self.players[x[0]]
-            current_hp, max_hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
-                f"SELECT current_hp, max_hp, damage, armor, attack_speed, unlocked FROM Knights"
-                f" WHERE name = '{x[0]}'").fetchone()
+            hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
+                f"SELECT hp, damage, armor, attack_speed, unlocked FROM Knights "
+                f"WHERE name = '{x[0]}'").fetchone()
             p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
-                int(current_hp), int(max_hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
+                int(hp), int(hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
 
     def init_levels(self):
-        self.levels = [Level(i) for i in range(len(os.listdir('data/levels')))]
+        self.levels = (Level(0), Level(1), Level(2, floor_image='floor1.jpg', ghosts_num=2),
+                       Level(3, floor_image='floor2.jpg', ghosts_num=2),
+                       Level(4, floor_image='floor3.jpg', ghosts_num=3),
+                       Level(5, floor_image='floor3.jpg', ghosts_num=4))
         self.current_level = self.levels[0]
 
     def show_start_screen(self):
@@ -536,8 +591,11 @@ class Board:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     terminate()
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                    return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        return
+                    elif event.key == pygame.K_ESCAPE:
+                        terminate()
 
     def draw_level(self):
         field = self.current_level.get_field()
@@ -582,8 +640,12 @@ class Board:
             n_y, n_x = 5, 10
         elif door_num == 4:
             n_y, n_x = 6, 10
+        if next_level_num > 5:
+            next_level_num = 0
         if next_level_num == 0:
             board.current_player.revive_hp()
+            all_sprites.add(sword, axe, kope)
+        all_sprites.add(board.current_player)
         next_level = self.levels[next_level_num]
         p_x, p_y = self.current_player.get_coords()
         next_level.field[n_y][n_x] = board.current_player.CHAR
@@ -658,15 +720,19 @@ class Board:
                         self.current_level.action(self.current_player)
             for g in self.current_level.goblins:
                 g.step_to_player()
+            self.current_level.spawn_ghost()
+            for g in self.current_level.ghosts:
+                g.step()
             update_screen()
 
 
 class Level:
     GOBLIN_SPAWN_CHANCE = 20
+    GHOST_SPAWN_CHANCE = 25
 
-    def __init__(self, num: int, wall_image=load_image('box.jpg'), floor_image=load_image('floor0.jpg')):
-        self.wall_image = wall_image
-        self.floor_image = floor_image
+    def __init__(self, num: int, ghosts_num=0, wall_image='box.jpg', floor_image='floor0.jpg'):
+        self.wall_image = load_image(wall_image)
+        self.floor_image = load_image(floor_image)
         self.door1_image = load_image('door.png')
         self.door2_image = load_image('door2.png')
         self.shop_image = load_image('shop.png', colorkey=-1)
@@ -674,14 +740,17 @@ class Level:
         max_width = max(map(len, level_map))
         self.field = list(map(lambda x: list(x.ljust(max_width, '.')), level_map))
         self.goblins = pygame.sprite.Group()
+        self.ghosts = pygame.sprite.Group()
         for y in range(len(self.field)):
             for x in range(len(self.field)):
                 if self.field[y][x] == Goblin.CHAR:
-                    if not self.goblins or random.randint(0, 100) < self.GOBLIN_SPAWN_CHANCE:
+                    if len(self.goblins) < num or random.randint(0, 100) < self.GOBLIN_SPAWN_CHANCE:
                         goblin = Goblin(x, y)
                         self.goblins.add(goblin)
                     else:
                         self.field[y][x] = '0'
+        self.ghosts_num = 0
+        self.max_ghosts_num = ghosts_num
 
     def get_field(self):
         return self.field
@@ -720,6 +789,15 @@ class Level:
             else:
                 entity.set_side(dir_x, 0)
 
+    def spawn_ghost(self):
+        if random.randint(1, 10000) > 25 or self.ghosts_num == self.max_ghosts_num:
+            return
+        x, y = random.randint(1, 10), random.randint(1, 9)
+        while self.field[y][x] == '0':
+            x, y = random.randint(1, 10), random.randint(1, 9)
+        self.ghosts.add(Ghost(x, y))
+        self.ghosts_num += 1
+
     def action(self, player: Player):
         side_x, side_y = player.side
         x, y = self.get_coords(player.CHAR)
@@ -730,19 +808,10 @@ class Level:
             self.change_player(player)
         elif target in '23':  # Дверь
             current_level_num = board.levels.index(board.current_level)
-            if current_level_num == 0:
+            if side_x == 1:  # Дверь справа
                 for i in all_sprites:
                     i.kill()
-                all_sprites.add(player)
-                board.change_level(1, int(target) - 1)
-            elif current_level_num == 1:
-                for i in all_sprites:
-                    i.kill()
-                all_sprites.add(sword, axe, kope)
-                if side_x == -1:  # Дверь слева
-                    board.change_level(0, int(target) + 1)
-                elif side_x == 1:  # Дверь справа
-                    board.change_level(0, int(target) + 1)
+                board.change_level(current_level_num + 1, int(target) + 1)
         else:
             player.attack()
 
