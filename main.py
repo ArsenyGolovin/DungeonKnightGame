@@ -752,7 +752,7 @@ class Board:
                         if shift_pressed and event.key == pygame.K_c:
                             self.current_player.current_hp = 9999
                             self.current_player.dmg = 9999
-                        elif ctrl_pressed and alt_pressed and shift_pressed:
+                        elif alt_pressed and shift_pressed:
                             cur.execute("UPDATE Knights SET hp=100,damage=20,armor=10,attack_speed=2,"
                                         "unlocked=1 WHERE name='sword'")
                             cur.execute("UPDATE Knights SET hp=120,damage=40,armor=25,attack_speed=1.5,"
