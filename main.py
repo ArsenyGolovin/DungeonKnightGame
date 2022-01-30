@@ -499,7 +499,7 @@ class Shop:
 
         icon_size = (60, 60)
         player_img_size = (70, 70)
-        player_specifications_strings = (f'MAXIMUM HP   {player.max_hp}',
+        player_specifications_strings = (f'HP   {player.current_hp}',
                                          f'DAMAGE   {player.dmg}',
                                          f'ARMOR  {player.armor}',
                                          f'ATTACK SPEED  {player.attack_speed_per_second}',
@@ -541,9 +541,10 @@ class Board:
             hp, dmg, armor, attack_speed_per_second, unlocked = cur.execute(
                 f"SELECT hp, damage, armor, attack_speed, unlocked FROM Knights "
                 f"WHERE name = '{x[0]}'").fetchone()
-            p.current_hp, p.max_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
+            p.current_hp, p.current_hp, p.dmg, p.armor, p.attack_speed_pes_second, p.unlocked = \
                 int(hp), int(hp), int(dmg), int(armor), float(attack_speed_per_second), bool(unlocked)
         self.current_player = self.players[cur.execute("SELECT current_player FROM Player").fetchone()[0]]
+        shop.coins = int(cur.execute("SELECT coins FROM Player").fetchone()[0])
 
     def init_levels(self):
         self.levels = (Level(0), Level(1), Level(2, floor_image='floor1.jpg', ghosts_num=2),
@@ -602,7 +603,6 @@ class Board:
                         terminate()
 
     def show_won_screen(self):
-        self.load_db_info()
         screen.fill('black')
         fon = transform.scale(load_image('cong.jpg'), (width, height))
         screen.blit(fon, (0, 0))
@@ -625,8 +625,6 @@ class Board:
                     terminate()
                 elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     return
-                if event.key == pygame.K_ESCAPE:
-                    terminate()
 
     def draw_level(self):
         field = self.current_level.get_field()
@@ -662,7 +660,7 @@ class Board:
 
     def change_level(self, next_level_num: int, door_num: int):
         # Место появления игрока на следующем уровне
-        n_x, n_y = 0, 0
+        n_x, n_y = 7, 7
         if door_num == 1:
             n_y, n_x = 5, 1
         elif door_num == 2:
@@ -671,10 +669,15 @@ class Board:
             n_y, n_x = 5, 10
         elif door_num == 4:
             n_y, n_x = 6, 10
-        if next_level_num > 5:
+        if next_level_num > 5 and next_level_num != 10:
             next_level_num = 0
-        if next_level_num == 0:
             self.show_won_screen()
+            board.current_player.revive_hp()
+            all_sprites.add(sword, axe, kope)
+        if next_level_num == 10:
+            next_level_num = 0
+
+
             board.current_player.revive_hp()
             all_sprites.add(sword, axe, kope)
         all_sprites.add(board.current_player)
@@ -745,10 +748,29 @@ class Board:
                     ctrl_pressed = pygame.key.get_mods() & pygame.KMOD_CTRL
                     if ctrl_pressed:
                         shift_pressed = pygame.key.get_mods() & pygame.KMOD_SHIFT
+                        alt_pressed = pygame.key.get_mods() & pygame.KMOD_ALT
                         if shift_pressed and event.key == pygame.K_c:
                             self.current_player.current_hp = 9999
+                            self.current_player.dmg = 9999
+                        elif ctrl_pressed and alt_pressed and shift_pressed:
+                            cur.execute("UPDATE Knights SET hp=100,damage=20,armor=10,attack_speed=2,"
+                                        "unlocked=1 WHERE name='sword'")
+                            cur.execute("UPDATE Knights SET hp=120,damage=40,armor=25,attack_speed=1.5,"
+                                        "unlocked=0 WHERE name='axe'")
+                            cur.execute("UPDATE Knights SET hp=90,damage=50,armor=10,attack_speed=1,"
+                                        "unlocked=0 WHERE name='kope'")
+                            cur.execute("UPDATE Player SET current_player='sword',coins=100")
+                            con.commit()
+                            self.load_db_info()
+                            self.change_level(10, 6)
+
+                            self.current_level = self.levels[0]
+                            self.current_level.field[3][1] = 'A'
+                            self.current_level.field[1][1] = 'K'
+                            self.current_level.field[7][7] = 'S'
                         else:
                             self.current_player.set_side(dir_x, dir_y)
+
                     else:
                         self.current_level.move_entity(dir_x, dir_y, self.current_player)
                     if event.key == pygame.K_e:
